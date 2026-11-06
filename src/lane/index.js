@@ -5,6 +5,8 @@ import { formatSpeed, guardSpeed, speedStat } from '../speed.js'
 import { player, resetPlayer } from '../player.js'
 import { fishMesh, prewarmFish } from '../hub/fish.js'
 import { rodTip, setToolVisible } from '../tools.js'
+import { getYaw } from '../camera.js'
+import { sfx } from '../audio/index.js'
 import { createGuard } from './guard.js'
 import { buildForest, updateRivers } from './scenery.js'
 import { buildThemedZone } from './themes.js'
@@ -50,6 +52,7 @@ function pickFish(zone, luck = 1) {
   return zone.fish[0][0]
 }
 const zoneAt = (z) => ZONES.find((zn) => z <= zn.start && z > zn.end) ?? null
+const HEAR = 70 // m: a guard is heard (roar, footfalls) within this distance
 
 export function buildLane(scene, ctx) {
   const { fx, laneHud } = ctx
@@ -131,6 +134,12 @@ export function buildLane(scene, ctx) {
   let knock = KNOCKBACK // the throw being played: a guard's catch or a bat bonk (BAT.knock)
   let stolen = false // the catch being carried was stolen with the bat
   let splashT = 0
+  let nibbles = 0 // nibble sounds played this wait
+  let warned = false // the "Don't stop!" warning is showing
+  let wasChased = false // a guard was after you last frame
+  let quietEnd = false // the chase ended by a catch or a delivery this frame (no "escaped" chime)
+  const roared = new Set() // guards whose current chase has roared
+  const stepT = new Map() // guard -> s to its next footfall
 
   const anim = () => ctx.getAnimator()
   const setPose = (p, rate) => anim()?.setOverlay(p, rate)
@@ -168,6 +177,7 @@ export function buildLane(scene, ctx) {
     t = 0
     setPose(POSE.windup, 14)
     laneHud.showCast(false)
+    nibbles = 0
     return true
   }
 
@@ -177,6 +187,7 @@ export function buildLane(scene, ctx) {
     progress = Math.min(1, progress + equippedRod().speed / need) // catch speed: more per click
     laneHud.setClicks(clicks, progress, true)
     laneHud.pulseClick()
+    sfx.reelClick(progress)
     fx.burst(bobber.position, { kind: 'glow', count: 5, color: '#d8faff', speed: 1.6, up: 3, size: 0.22, life: 0.5, gravity: 12 })
     fx.ring(bobber.position, { size: 1.2, life: 0.5 })
     setPose(clicks % 2 ? POSE.reel : POSE.hold, 30)
@@ -206,6 +217,7 @@ export function buildLane(scene, ctx) {
     setPose(POSE.carry, 10)
     setToolVisible(ctx.getAvatar(), false)
     laneHud.run()
+    sfx.runStart()
     fx.burst(tmp.copy(player.renderPosition).setY(2.8), { kind: 'spark', count: 22, color: '#fff6b0', speed: 3, up: 3, size: 0.45, life: 0.9, gravity: 3 })
   }
 
@@ -220,18 +232,28 @@ export function buildLane(scene, ctx) {
     const w = weight
     const earn = Math.max(1, Math.round(FISH[species].earn * (1 + w)))
     ctx.onDeliver({ species, weight: w, earn })
+    sfx.deliver(FISH[species].rarity)
+    quietEnd = true
     fx.burst(tmp.copy(player.renderPosition).setY(1.5), { kind: 'spark', count: 30, color: '#fff2a0', speed: 4, up: 4, size: 0.5, life: 1, gravity: 4 })
     ctx.toast(`+1 ${FISH[species].name} (${w}Kg)${stolen ? ' - stolen!' : ''}`)
     stolen = false
     dropCarry()
     setPose(null, 8)
     for (const zn of zones) zn.guard.giveUp()
-    laneHud.warn(false)
+    setWarn(false)
     mode = 'free'
+  }
+
+  function setWarn(on) {
+    if (on && !warned) sfx.dontStop()
+    warned = on
+    laneHud.warn(on)
   }
 
   function knockedDown(zn) {
     const hadFish = !!carried
+    quietEnd = true
+    sfx.guardCaught(hadFish)
     const fishPos = carried ? carried.getWorldPosition(new Vector3()) : player.renderPosition
     fx.burst(fishPos, { kind: 'glow', count: 16, color: '#ffffff', speed: 4, up: 4, size: 0.35, life: 0.7, gravity: 10 })
     if (mode === 'cast' || mode === 'wait' || mode === 'reel') endFishing()
@@ -240,7 +262,7 @@ export function buildLane(scene, ctx) {
       leapFish = null
     }
     dropCarry()
-    laneHud.warn(false)
+    setWarn(false)
     ctx.toast(hadFish ? `The ${zn.name} took your fish!` : `The ${zn.name} won't let you pass!`)
     launch({ x: player.position.x * 0.7, z: Math.min(KNOCKBACK.landZ, zn.zone.start + KNOCKBACK.landZ) }, KNOCKBACK)
   }
@@ -281,7 +303,8 @@ export function buildLane(scene, ctx) {
     }
     dropCarry()
     stolen = false
-    laneHud.warn(false)
+    quietEnd = true
+    setWarn(false)
     for (const zn of zones) zn.guard.giveUp()
     const len = Math.hypot(dx, dz) || 1
     player.facing = Math.atan2(-dx / len, -dz / len) // face the attacker as you fly backwards
@@ -310,11 +333,45 @@ export function buildLane(scene, ctx) {
     return true
   }
 
+  // Where a guard is heard from: loudness by distance, pan by where it is relative to the camera.
+  function hearing(pos) {
+    const dx = pos.x - player.position.x
+    const dz = pos.z - player.position.z
+    const d = Math.hypot(dx, dz)
+    const yaw = getYaw()
+    // Camera right = (cos yaw, -sin yaw) on the ground.
+    const pan = d > 0.5 ? Math.max(-1, Math.min(1, (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / d)) * 0.7 : 0
+    return { near: Math.max(0, 1 - d / HEAR) ** 1.4, pan }
+  }
+
+  // A guard roars as its chase starts and thuds after you while it runs.
+  function guardSounds(zn, dt) {
+    const g = zn.guard
+    if (!g.chasing) {
+      roared.delete(g)
+      return
+    }
+    if (!roared.has(g)) {
+      roared.add(g)
+      const h = hearing(g.position)
+      sfx.guardRoar(g.kind, Math.max(0.35, h.near), h.pan)
+      stepT.set(g, 0.5)
+    }
+    if (g.state !== 'chase') return
+    const left = (stepT.get(g) ?? 0) - dt
+    if (left > 0) return stepT.set(g, left)
+    stepT.set(g, g.kind === 'phoenix' ? 0.32 : 0.26)
+    const h = hearing(g.position)
+    sfx.guardStep(g.kind, h.near, h.pan)
+  }
+
   function reset() {
     if (mode === 'free') return
+    if (mode === 'cast' || mode === 'wait' || mode === 'reel') sfx.reelIn()
+    quietEnd = true
     endFishing()
     dropCarry()
-    laneHud.warn(false)
+    setWarn(false)
     ctx.playerGroup.rotation.x = 0
     for (const zn of zones) zn.guard.giveUp()
   }
@@ -349,7 +406,11 @@ export function buildLane(scene, ctx) {
       // Zone banner (and the zone's sky) on entering a zone.
       const z = zoneAt(p.z)
       if (z !== lastZone) {
-        if (z) laneHud.banner(z.name, z.banner, ZONE_BANNER.hold, ZONE_BANNER.fade, `Recommended Speed: ${formatSpeed(z.speed ?? 1)}`, speedStat() < (z.speed ?? 1))
+        if (z) {
+          const low = speedStat() < (z.speed ?? 1)
+          laneHud.banner(z.name, z.banner, ZONE_BANNER.hold, ZONE_BANNER.fade, `Recommended Speed: ${formatSpeed(z.speed ?? 1)}`, low)
+          sfx.zoneEnter(ZONES.indexOf(z), low)
+        }
         ctx.setSky?.(z?.sky ?? null)
         lastZone = z
       }
@@ -372,6 +433,7 @@ export function buildLane(scene, ctx) {
         // Wind up, then throw: the bobber flies in an arc to the water.
         if (t > 0.28 && !bobber.visible) {
           setPose(POSE.throw, 20)
+          sfx.cast()
           from.copy(tip)
           bobber.visible = true
           line.visible = true
@@ -384,6 +446,7 @@ export function buildLane(scene, ctx) {
           if (k >= 1) {
             fx.burst(to, { kind: 'glow', count: 10, color: '#d8faff', speed: 2, up: 3, size: 0.25, life: 0.6, gravity: 12 })
             fx.ring(to, { size: 1.4 })
+            sfx.plop()
             mode = 'wait'
             t = 0
             waitFor = rand(FISHING.bite[0], FISHING.bite[1]) / equippedRod().speed // catch speed: quicker bites
@@ -394,6 +457,10 @@ export function buildLane(scene, ctx) {
         bobber.position.set(to.x, 0.12 + Math.sin(elapsed * 3) * 0.04, to.z)
         drawLine(0.45)
         if (t > waitFor - 0.5) bobber.position.y -= Math.sin((t - waitFor + 0.5) * 30) * 0.05 // nibbles
+        if (nibbles < 2 && t > waitFor - 0.5 + nibbles * 0.22) {
+          nibbles++
+          sfx.nibble()
+        }
         if (t >= waitFor) {
           // Bite!
           species = pickFish(current.zone, equippedRod().luck)
@@ -406,6 +473,7 @@ export function buildLane(scene, ctx) {
           fx.burst(bobber.position, { kind: 'spark', count: 8, color: '#ffffff', speed: 1.5, up: 2, size: 0.5, life: 0.6, gravity: 2 })
           fx.ring(bobber.position, { size: 2 })
           laneHud.showClicker(true)
+          sfx.bite()
           mode = 'reel'
           t = 0
         }
@@ -434,11 +502,13 @@ export function buildLane(scene, ctx) {
           from.copy(bobber.position)
           fx.burst(from, { kind: 'glow', count: 30, color: '#d8faff', speed: 4, up: 7, size: 0.35, life: 0.9, gravity: 12 })
           fx.ring(from, { size: 2.6, life: 1.1 })
+          sfx.fishLanded(FISH[species].rarity)
           setPose(POSE.carry, 9)
           mode = 'leap'
           t = 0
         } else if (reelTime > FISHING.timeLimit) {
           ctx.toast('The fish got away!')
+          sfx.fishEscaped()
           endFishing()
         }
       } else if (mode === 'leap') {
@@ -458,7 +528,7 @@ export function buildLane(scene, ctx) {
         carried.position.y = 2.55 + Math.abs(Math.sin(elapsed * 9)) * 0.06
         const chased = zones.some((zn) => zn.guard.chasing)
         const speed = Math.hypot(player.velocity.x, player.velocity.z)
-        laneHud.warn(chased && speed < 4 && t > 1)
+        setWarn(chased && speed < 4 && t > 1)
         if (p.z > 0.6) deliver()
       } else if (mode === 'thrown') {
         const F = knock.flight
@@ -472,6 +542,7 @@ export function buildLane(scene, ctx) {
         } else if (t < F + knock.lie) {
           if (t - dt < F) {
             resetPlayer({ x: throwTo.x, y: 0.05, z: throwTo.z }, player.facing)
+            sfx.thrownLand()
             fx.burst({ x: throwTo.x, y: 0.2, z: throwTo.z }, { kind: 'puff', count: 14, color: '#f0f8e0', speed: 2.5, up: 1, size: 0.8, grow: 2, life: 0.9, gravity: 0 })
             setPose(null, 6)
           }
@@ -485,6 +556,7 @@ export function buildLane(scene, ctx) {
           g.rotation.x = 0
           player.frozen = false
           mode = 'free'
+          sfx.getUp()
         }
       }
 
@@ -492,6 +564,8 @@ export function buildLane(scene, ctx) {
       // chases (through its own zone); otherwise each guard chases anyone reaching the
       // end part of its zone (the gate). A catch knocks them back to the start of the
       // guard's zone.
+      let chased = false
+      let closest = Infinity
       for (const zn of zones) {
         let want = false
         if (mode === 'carry') want = zn === current && p.z <= zn.zone.start + 1 && p.z >= zn.range.minZ
@@ -501,7 +575,17 @@ export function buildLane(scene, ctx) {
         if (!zn.group.visible && !zn.guard.chasing) continue
         const res = zn.guard.update(dt, elapsed, player.renderPosition, zn.rivers, zn.groundAt)
         if (res === 'caught' && want) knockedDown(zn)
+        guardSounds(zn, dt)
+        if (zn.guard.chasing) {
+          chased = true
+          closest = Math.min(closest, Math.hypot(zn.guard.position.x - p.x, zn.guard.position.z - p.z))
+        }
       }
+      // The chase heartbeat + drone (closer = faster), and a relieved chime when it gives up.
+      sfx.chaseUpdate(dt, chased, chased ? Math.max(0, Math.min(1, 1 - (closest - 2) / 30)) : 0)
+      if (wasChased && !chased && !quietEnd && mode !== 'thrown') sfx.escaped()
+      wasChased = chased
+      quietEnd = false
     },
   }
 }

@@ -170,6 +170,7 @@ export function installTouch(actions) {
     }),
   )
 
+  cluster.querySelector('.jump').dataset.sfx = 'off' // the jump makes its own whoosh (sfx.jump)
   root.append(left, right, top, cluster)
   document.body.appendChild(root)
 

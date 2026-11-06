@@ -57,7 +57,7 @@ export function createBase({ plots, laneHud, toast, fx }) {
     const tier = cur().tier
     level++
     apply()
-    sfx.rodBuy()
+    sfx.upgrade(level)
     const [cx, cz] = plots.myToWorld(0, 0)
     fx?.burst({ x: cx, y: 1.5, z: cz }, { kind: 'spark', count: 40, color: '#fff2a0', speed: 5, up: 5, size: 0.6, life: 1.1, gravity: 4 })
     if (level === 2) toast('Base upgraded! You got a Treadmill: walk on it to get faster.')

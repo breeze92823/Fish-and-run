@@ -119,11 +119,12 @@
   to { transform: rotate(8deg) translateY(calc(-4 * var(--u))); }
 }
 
-/* The bonk feed: who bonked whom (and stole what), newest on top, right side under the top bar. */
+/* The bonk feed: who bonked whom (and stole what), newest on top, right side between the Fish tile
+   and the bottom-right corner (clear of the touch buttons in portrait). */
 .bat-feed {
   position: absolute;
   right: max(8px, calc(16 * var(--u)), env(safe-area-inset-right));
-  top: 46%;
+  top: 57%;
   display: flex;
   flex-direction: column;
   align-items: flex-end;

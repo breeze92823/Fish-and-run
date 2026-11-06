@@ -190,9 +190,9 @@ const swooshMaterial = () =>
       varying vec2 vK;
       void main() {
         float tail = smoothstep(uHead - 0.7, uHead, vK.x) * step(vK.x, uHead);
-        float edge = mix(0.12, 1.0, vK.y * vK.y);
+        float edge = mix(0.25, 1.0, vK.y);
         float a = tail * edge * uFade;
-        gl_FragColor = vec4(uColor * a * 1.6, a);
+        gl_FragColor = vec4(uColor * a * 2.6, min(1.0, a * 1.3));
       }`,
     transparent: true,
     depthWrite: false,
@@ -218,13 +218,15 @@ export function createBat(ctx) {
     })
   }
 
+  // This player's id in the room ('me' offline, so the dev simulate hook works without a server).
+  const myId = () => net.sessionId ?? 'me'
   // Where a player stands, as drawn: you, or a remote (null once they are gone / hidden).
   const posOf = (id) => {
-    if (id === net.sessionId) return player.renderPosition
+    if (id === myId()) return player.renderPosition
     const r = remotes.get(id)
     return r?.group.visible ? r.group.position : null
   }
-  const yawOf = (id) => (id === net.sessionId ? player.facing : remotes.get(id)?.group.rotation.y ?? 0)
+  const yawOf = (id) => (id === myId() ? player.facing : remotes.get(id)?.group.rotation.y ?? 0)
   // 0..1 loudness of something `d` m away (1 within 6 m, silent past 60 m).
   const nearness = (pos) => (pos ? Math.max(0, Math.min(1, 1 - (Math.hypot(pos.x - player.renderPosition.x, pos.z - player.renderPosition.z) - 6) / 54)) : 0)
 
@@ -248,6 +250,9 @@ export function createBat(ctx) {
     s.m.visible = true
   }
   const pending = [] // swooshes waiting for a remote's wind-up: { at, id }
+  // Game-time callbacks (hit-stop and dev pause slow them like everything else): { at, fn }.
+  const timers = []
+  const later = (seconds, fn) => timers.push({ at: seconds, fn })
 
   // The comic word popping out of an impact.
   function comicWord(word, pos) {
@@ -288,6 +293,7 @@ export function createBat(ctx) {
       scene.add(s)
       effects.push(e)
       bubbles.set(id, e)
+      sfx.batBubble(nearness(posOf(id)), angry)
     }, delay * 1000)
   }
 
@@ -306,6 +312,17 @@ export function createBat(ctx) {
         s.material.rotation = e.t * 4
       })
     }
+  }
+
+  // The bonked player comes down: a thud (and, for someone else, a dust puff: your own landing
+  // puffs in lane/index.js), then the dizzy birds tweet while they lie there.
+  function landed(id) {
+    const p = posOf(id)
+    if (!p) return
+    const near = nearness(p)
+    sfx.batLand(near)
+    sfx.batDizzy(near * 0.9, BAT.knock.lie)
+    if (id !== myId()) fx.burst({ x: p.x, y: p.y + 0.2, z: p.z }, { kind: 'puff', count: 12, color: '#f0f8e0', speed: 2.5, up: 1, size: 0.8, grow: 2, life: 0.9, gravity: 0 })
   }
 
   // The hit itself, at the victim's position: sparks, stars, a dust puff, a shock ring, the word.
@@ -357,7 +374,7 @@ export function createBat(ctx) {
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
   const fishHtml = (id) => `<b style="color:${RARITY[FISH[id]?.rarity] ?? '#fff'}">${esc(FISH[id]?.name ?? 'fish')}</b>`
   function feedLine(m) {
-    const me = net.sessionId
+    const me = myId()
     const by = m.by === me ? 'You' : esc(m.byName)
     const to = m.to === me ? 'you' : esc(m.toName)
     const line = el('div', `bat-feed-line${m.by === me || m.to === me ? ' mine' : ''}`)
@@ -434,23 +451,25 @@ export function createBat(ctx) {
   }
 
   // --- The room's messages -------------------------------------------------------------------------
-  onNetMessage('swing', (m) => {
+  function onSwing(m) {
     const r = remotes.get(m?.id)
     if (!r?.group.visible) return
     r.swing()
     sfx.batWhoosh(nearness(r.group.position) * 0.8)
     pending.push({ at: BAT.windup, id: m.id })
-  })
+  }
+  onNetMessage('swing', onSwing)
 
-  onNetMessage('bonk', (m) => {
+  function onBonk(m) {
     if (!m || typeof m.to !== 'string') return
-    const me = net.sessionId
+    const me = myId()
     const now = performance.now()
     immune.set(m.to, now + BAT.immune * 1000)
     feedLine(m)
     const fish = FISH[m.fish] ? m.fish : ''
     const lie = BAT.knock.flight + BAT.knock.lie
     dizzy(m.to, lie + 0.3)
+    later(BAT.knock.flight, () => landed(m.to))
 
     if (m.to === me) {
       // You got bonked.
@@ -493,7 +512,8 @@ export function createBat(ctx) {
     say(m.by, fish ? pick(BAT.taunts) : pick(BAT.bonks))
     say(m.to, pick(BAT.ouch), { angry: true, delay: 0.35 })
     if (fish && pos) flyFish(fish, pos, m.by) // the catch arcs over to the thief
-  })
+  }
+  onNetMessage('bonk', onBonk)
 
   // The real weight of the fish you stole.
   onNetMessage('gotFish', (m) => lane.setCarryWeight(+m?.weight))
@@ -527,6 +547,8 @@ export function createBat(ctx) {
 
   return {
     swing,
+    // Dev only: play the room's messages without a server, e.g. simulate('bonk', { by: 'x', to: 'me', x: 0, z: 1, fish: '' }).
+    simulate: import.meta.env.DEV ? (type, m) => (type === 'bonk' ? onBonk(m) : type === 'swing' ? onSwing(m) : lane.setCarryWeight(+m?.weight)) : undefined,
     // Hit-stop: the frame's dt is scaled by this (nearly frozen for a beat after a hit).
     timeScale(dt) {
       if (stop <= 0) return 1
@@ -534,7 +556,15 @@ export function createBat(ctx) {
       return 0.06
     },
     update(dt) {
+      const wasCooling = cooldown > 0
       cooldown -= dt
+      // The bat is ready again: a soft tick, while it is still in hand out in the lane.
+      if (wasCooling && cooldown <= 0 && ctx.getSlot() === 2 && lane.canSwing && player.position.z < 0) sfx.batReady()
+      for (let i = timers.length - 1; i >= 0; i--) {
+        if ((timers[i].at -= dt) > 0) continue
+        const { fn } = timers.splice(i, 1)[0]
+        fn()
+      }
       // The swing: animation keys, and the strike once the wind-up is done.
       if (swingT >= 0) {
         if (!lane.canSwing) swingT = -1 // a stolen catch (or a bonk) took over the arms

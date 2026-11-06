@@ -71,6 +71,7 @@ export function createLaneHud(hudRoot, { onCast, onStop, onClick, onSwing }) {
   // While reeling, a click/tap anywhere (but Stop) counts: a full-screen catcher above
   // the canvas, so the click never grabs pointer lock or turns the camera.
   const catcher = el('div', 'lane-catcher')
+  catcher.dataset.sfx = 'off' // each click plays the reel's own sound (sfx.reelClick)
   catcher.addEventListener('pointerdown', (e) => {
     e.preventDefault()
     e.stopPropagation()

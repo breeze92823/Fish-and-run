@@ -63,7 +63,7 @@ export function createTreadmill({ scene, plots, laneHud, toast }) {
     const look = cur().look
     level++
     if (cur().look !== look) plots.setMyTreadmillLook(cur().look)
-    sfx.rodBuy()
+    sfx.upgrade(level)
     toast(`Treadmill upgraded to Level ${level}! Now +${formatSpeed(cur().per)} speed per step`)
     repaint()
   }

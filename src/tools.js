@@ -86,9 +86,11 @@ export function setToolVisible(avatar, on) {
 // stepSwing(animator, prev, t) applies the key the swing just reached (prev -> t, s since it began)
 // and returns false once the swing is over. `windup` / `total` from config BAT.
 export const BAT_POSE = {
-  windup: { ArmR1: { x: -1.75, z: -1.25 }, ArmR2: { x: 1.1 }, ArmL1: { x: -1.1, z: -0.35 }, ArmL2: { x: 0.6 }, Spine1: { y: -0.65, x: -0.08 }, Neck1: { y: 0.4 } },
-  strike: { ArmR1: { x: -1.55, z: 0.55 }, ArmR2: { x: 0.05 }, ArmL1: { x: -1.45, z: 0.75 }, ArmL2: { x: 0.2 }, Spine1: { y: 0.75, x: 0.18 }, Neck1: { y: -0.35 } },
-  follow: { ArmR1: { x: -1.1, z: 1.0 }, ArmR2: { x: 0.5 }, ArmL1: { x: -0.9, z: 1.0 }, Spine1: { y: 0.95, x: 0.12 }, Neck1: { y: -0.4 } },
+  // Rig axes (measured): ArmR1 x < 0 raises the arm forward, z > 0 swings it out to the right;
+  // Spine1 y < 0 turns the right shoulder back; ArmR2 x bends the elbow.
+  windup: { ArmR1: { x: -1.5, z: 1.25 }, ArmR2: { x: 1.0 }, ArmL1: { x: -1.3, z: 0.7 }, ArmL2: { x: 0.8 }, Spine1: { y: -0.7, x: -0.08 }, Neck1: { y: 0.45 } },
+  strike: { ArmR1: { x: -0.9, z: -0.5 }, ArmR2: { x: 1.4 }, ArmL1: { x: -1.4, z: -0.2 }, ArmL2: { x: 0.3 }, Spine1: { y: 0.6, x: 0.15 }, Neck1: { y: -0.3 } },
+  follow: { ArmR1: { x: -1.2, z: -1.15 }, ArmR2: { x: 0.9 }, ArmL1: { x: -0.9, z: -0.7 }, Spine1: { y: 0.9, x: 0.1 }, Neck1: { y: -0.4 } },
 }
 export function stepSwing(animator, prev, t, windup, total) {
   if (!animator) return t < total

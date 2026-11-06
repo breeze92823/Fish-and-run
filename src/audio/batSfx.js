@@ -83,3 +83,51 @@ export function batSafe() {
   tone({ t, f: 880, f2: 1320, d: 0.25, gain: 0.05 })
 }
 
+
+// A bonked player hits the ground: a heavy body thud, a crunch of dust and a little rubbery
+// bounce. `near` 0..1 (1 = you landed).
+export function batLand(near = 1) {
+  if (near < 0.05 || !limit('batland', 120) || !voice(0.7, 2)) return
+  const t = now()
+  const g = near
+  tone({ t, f: vary(120, 0.08), f2: 38, d: 0.22, gain: 0.75 * g })
+  burst({ t, noise: 'brown', type: 'lowpass', f: 420, q: 0.6, a: 0.002, d: 0.2, gain: 0.6 * g })
+  burst({ t: t + 0.01, noise: 'pink', f: 1400, f2: 500, q: 0.7, a: 0.004, d: 0.18, gain: 0.22 * g })
+  crinkle({ t: t + 0.02, n: COARSE_POINTER ? 5 : 9, dur: 0.18, gain: 0.05 * g, f0: 900, f1: 3500 })
+  // The bounce: a small second thump and a quick rubbery "boip".
+  tone({ t: t + 0.17, f: 150, f2: 70, d: 0.1, gain: 0.3 * g })
+  tone({ t: t + 0.17, type: 'triangle', f: 240, f2: 420, glide: 0.08, a: 0.004, d: 0.12, gain: 0.07 * g, lp: 1800 })
+  if (near >= 1) buzz(40)
+}
+
+// Cartoon birds circling a dizzy head: n little tweets (a fast up-chirp, sometimes doubled)
+// spread over `seconds`.
+export function batDizzy(near = 1, seconds = 1) {
+  if (near < 0.05 || !limit('batdizzy', 300) || !voice(seconds + 0.3, 2)) return
+  const t = now()
+  const n = Math.max(3, Math.round(seconds * 3.5))
+  for (let i = 0; i < n; i++) {
+    const at = t + (i / n) * seconds + rnd(0, 0.05)
+    const f = rnd(2300, 3200)
+    const pan = Math.sin(i * 1.7) * 0.6 // the birds go round
+    tone({ t: at, f, f2: f * 1.45, glide: 0.05, a: 0.004, d: 0.06, gain: 0.05 * near, pan })
+    if (Math.random() < 0.5) tone({ t: at + 0.08, f: f * 1.06, f2: f * 1.5, glide: 0.04, a: 0.004, d: 0.05, gain: 0.04 * near, pan })
+  }
+}
+
+// A chat bubble popping up over a head: a round mouth "pop" (lower and duller when angry).
+export function batBubble(near = 1, angry = false) {
+  if (near < 0.05 || !limit(angry ? 'batbubblea' : 'batbubble', 90) || !voice(0.2)) return
+  const t = now()
+  const f = angry ? vary(380, 0.06) : vary(620, 0.06)
+  tone({ t, f, f2: f * 2.2, glide: 0.035, a: 0.002, d: 0.07, gain: 0.14 * near })
+  burst({ t, f: angry ? 1200 : 2200, q: 1.5, a: 0.001, d: 0.02, gain: 0.08 * near })
+}
+
+// The bat is ready to swing again: a soft wooden tick and a tiny bright glint.
+export function batReady() {
+  if (!limit('batready', 250) || !voice(0.25)) return
+  const t = now()
+  modal({ t, f: vary(1500, 0.03), modes: WOOD, gain: 0.07, strike: 0.04 })
+  modal({ t: t + 0.03, f: 3136, modes: COIN, gain: 0.02, decay: 0.25, beat: 8 })
+}

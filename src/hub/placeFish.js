@@ -11,7 +11,6 @@ import { player } from '../player.js'
 import { activeCount, placeFish, state } from '../activeFish.js'
 import { inventory } from '../inventory.js'
 import { FISH } from '../config.js'
-import * as fishSound from '../audio/fishPanelSfx.js'
 import { sfx } from '../audio/index.js'
 
 const RANGE = 30 // m from you to the spot you aim at
@@ -60,7 +59,7 @@ export function createFishPlacer({ scene, camera, canvas, plots, getHeld, toast,
       return
     }
     if (res !== 'ok') return
-    fishSound.equipBest(1, 0)
+    sfx.pondPlace()
     fx?.ring({ x: at.x, y: 0.17, z: at.z }, { size: 2.4, life: 0.9 })
     fx?.burst({ x: at.x, y: 0.3, z: at.z }, { kind: 'glow', count: 22, color: '#d8faff', speed: 3, up: 5, size: 0.3, life: 0.8, gravity: 12 })
     toast(`${FISH[fish?.species]?.name ?? 'Fish'} is swimming in your pond! (${activeCount()}/${state.slots})`)

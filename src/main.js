@@ -2,7 +2,7 @@ import { ACESFilmicToneMapping, Clock, NeutralToneMapping, Group, PCFSoftShadowM
 import { CAMERA, ECONOMY, FISH, graphicsPreset, MY_PLOT, NET, OFFER_ROTATE, OFFERS, RENDER, SPEED_BOOST, TIME_OF_DAY } from './config.js'
 import * as bloxity from './bloxity.js'
 import { install as installInput, onKey } from './input.js'
-import { installAudio } from './audio/index.js'
+import { installAudio, sfx } from './audio/index.js'
 import { closeSellFish, openSellFish } from './sellFish.js'
 import { closeIndex, openIndex, toggleIndex } from './hud/indexWindow.js'
 import { closeRods, openRods } from './rods/window.js'
@@ -97,11 +97,18 @@ const hud = createHud({
       hud.setSlowMode(value)
     } else if (name === 'equip') {
       equip(value)
+      sfx.hotbarEquip(value === 1 ? 'rod' : value === 2 ? 'bat' : value >= 3 ? 'fish' : null)
     } else if (name === 'speed') buySpeedBoost()
     else if (name === 'offer') buyOffer()
     else if (name === 'shop' || name === 'gems') hud.toast('Coming soon!')
   },
 })
+// Every toast pops in with a soft bubble.
+const rawToast = hud.toast
+hud.toast = (msg) => {
+  sfx.toastPop()
+  rawToast(msg)
+}
 onNetMessage('schedule', (sc) => hud.setSchedule(sc)) // server clock for the Update / Next event countdowns
 hud.setGems(inventory.gems)
 onInventory(() => hud.setGems(inventory.gems))
@@ -345,6 +352,7 @@ syncTrail()
 const respawnAll = () => {
   lane.reset()
   respawn()
+  sfx.respawnPoof()
 }
 
 setAvatar(buildDefaultCharacter()) // visible immediately; replaced once the rig loads
@@ -383,11 +391,19 @@ bloxity.onRespawnRequest(respawnAll)
 onModeChanged((mode) => {
   playerGroup.visible = mode !== 'player' // first person: you are the camera
 })
-onKey('KeyV', toggleMode)
-onKey('KeyN', () => lighting.toggleDayNight())
+const switchMode = () => {
+  toggleMode()
+  sfx.modeSwitch()
+}
+const switchDayNight = () => {
+  lighting.toggleDayNight()
+  sfx.dayNight(lighting.isNight())
+}
+onKey('KeyV', switchMode)
+onKey('KeyN', switchDayNight)
 onKey('KeyR', respawnAll)
 onKey('KeyE', () => myBase.interact() || treadmill.interact() || lane.tryCast())
-installTouch({ mode: toggleMode, day: () => lighting.toggleDayNight(), respawn: respawnAll })
+installTouch({ mode: switchMode, day: switchDayNight, respawn: respawnAll })
 
 // --- Your plot + economy ------------------------------------------------------
 // activeFish.js owns money and the active fish; the plot swims them and the HUD
@@ -417,7 +433,11 @@ function updateOffer(elapsed) {
 // Buy the current offer with cash: the fish goes straight into your hands, like a delivered catch.
 function buyOffer() {
   const o = OFFERS[Math.max(0, offerIndex)]
-  if (!spend(o.price)) return hud.toast('Not enough cash!')
+  if (!spend(o.price)) {
+    sfx.deny()
+    return hud.toast('Not enough cash!')
+  }
+  sfx.rodBuy()
   inventory.caught++
   const earn = Math.max(1, Math.round(FISH[o.fish].earn * (o.earnMult ?? 1)))
   addFish(o.fish, 1, earn).hotbar = true
@@ -427,9 +447,32 @@ function buyOffer() {
   hud.toast(`Bought ${FISH[o.fish].name}!`)
 }
 function buySpeedBoost() {
-  if (!spend(SPEED_BOOST.price)) return hud.toast('Not enough cash!')
+  if (!spend(SPEED_BOOST.price)) {
+    sfx.deny()
+    return hud.toast('Not enough cash!')
+  }
+  sfx.boost()
   startBoost(SPEED_BOOST.duration)
   hud.toast(`x${SPEED_BOOST.mult} Speed for ${Math.round(SPEED_BOOST.duration / 60)} min!`)
+}
+
+// --- Movement sounds: footsteps at the stride rate, a whoosh on a jump, a thud on landing --------
+let stepIn = 0
+function moveSounds(dt, wasGrounded, fallSpeed) {
+  if (player.frozen || lane.mode === 'thrown' || fixedStepping) return
+  const v = player.velocity
+  if (wasGrounded && !player.grounded && v.y > 1) sfx.jump()
+  else if (!wasGrounded && player.grounded && fallSpeed > 4) sfx.land(Math.min(1, (fallSpeed - 4) / 18))
+  const speed = Math.hypot(v.x, v.z)
+  if (!player.grounded || speed < 1.2 || player.autoWalk) {
+    stepIn = Math.min(stepIn, 0.08)
+    return
+  }
+  stepIn -= dt
+  if (stepIn > 0) return
+  // Strides get quicker with speed but level off (a fast runner takes longer strides).
+  stepIn = Math.max(0.2, 0.62 - Math.log10(1 + speed) * 0.3)
+  sfx.footstep(speed)
 }
 
 // --- Loop -------------------------------------------------------------------
@@ -438,6 +481,7 @@ let shownLoading = true
 let readySince = 0
 
 let elapsed = 0
+let fixedStepping = false // __game.advance: no footsteps while fast-forwarding
 // One frame. `fixedDt` (dev only, __game.advance) steps the game without real time passing.
 function frame(fixedDt) {
   const raw = fixedDt ?? Math.min(clock.getDelta(), 0.1) // clamp huge frames (tab switch, breakpoint)
@@ -445,8 +489,11 @@ function frame(fixedDt) {
   elapsed += dt
   tickBoost()
 
+  const wasGrounded = player.grounded
+  const fallSpeed = -player.velocity.y
   stepPhysics(dt) // runs the player controller + world at the fixed rate, interpolates bodies
   interpolatePlayer()
+  moveSounds(dt, wasGrounded, fallSpeed)
 
   const p = player.renderPosition
   playerGroup.position.set(p.x, p.y, p.z)
@@ -499,5 +546,5 @@ if (import.meta.env.DEV) {
     resetPlayer({ x, y, z }, facing)
     syncYawToPlayer()
   }
-  window.__game = { player, bat, treadmill, base: myBase, net, remotes, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, hub, equip, lane, advance: (seconds, step = 1 / 60) => { for (let t = 0; t < seconds; t += step) frame(step) }, pause: (on) => { paused = on; if (!on) clock.getDelta() }, openSellFish, openIndex, openRods, openTrails }
+  window.__game = { player, bat, getAnimator: () => animator, treadmill, base: myBase, net, remotes, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, hub, equip, lane, advance: (seconds, step = 1 / 60) => { fixedStepping = true; for (let t = 0; t < seconds; t += step) frame(step); fixedStepping = false }, pause: (on) => { paused = on; if (!on) clock.getDelta() }, openSellFish, openIndex, openRods, openTrails }
 }
