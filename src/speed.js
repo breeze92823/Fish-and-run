@@ -18,7 +18,7 @@ export function onSpeedChange(fn) {
 export const trainedSpeed = () => trained
 export function addSpeed(n) {
   if (!(n > 0)) return
-  trained += n
+  trained = Math.round((trained + n) * 1e6) / 1e6 // 0.1 steps never drift (4.9999 < a zone's 5)
   emit()
 }
 export const snapshotSpeed = () => ({ trained })

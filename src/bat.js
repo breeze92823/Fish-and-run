@@ -1,5 +1,5 @@
 import './bat.css'
-import { AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, Color, DoubleSide, Mesh, ShaderMaterial, Sprite, SpriteMaterial, SRGBColorSpace } from 'three'
+import { AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, Color, DoubleSide, Mesh, ShaderMaterial, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace } from 'three'
 import { BAT, FISH, FONT_FAMILY, RARITY } from './config.js'
 import { player } from './player.js'
 import * as sfx from './audio/batSfx.js'
@@ -314,6 +314,43 @@ export function createBat(ctx) {
     }
   }
 
+  // The protection bubble round a freshly bonked player: a glowing shield (rim light + slow bands)
+  // that follows them for the whole `seconds` and blinks over its last few seconds. Seen by everyone
+  // (it is drawn from the bonk message), and by the player themself.
+  const shieldGeo = new SphereGeometry(1, 28, 20)
+  function shieldFx(id, seconds) {
+    const mat = new ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uFade: { value: 1 } },
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vP;
+        void main(){ vP = position; vN = normalize(normalMatrix * normal);
+          vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform float uTime; uniform float uFade; varying vec3 vN; varying vec3 vV; varying vec3 vP;
+        void main(){
+          float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+          float band = sin(vP.y * 7.0 - uTime * 2.5) * 0.5 + 0.5;
+          vec3 col = mix(vec3(0.25, 0.75, 1.0), vec3(0.8, 0.95, 1.0), rim);
+          float a = (0.07 + rim * 0.75 + band * 0.07) * uFade;
+          gl_FragColor = vec4(col * a * 1.6, a);
+        }`,
+    })
+    const m = new Mesh(shieldGeo, mat)
+    m.frustumCulled = false
+    m.renderOrder = 7
+    addEffect(m, seconds, (e) => {
+      const p = posOf(id)
+      if (!p) return false
+      const left = e.life - e.t
+      mat.uniforms.uTime.value = e.t
+      mat.uniforms.uFade.value = left > 8 ? 1 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(e.t * 14)) * Math.min(1, left / 2) // blinks as it runs out
+      const s = 1.25 * (1 + Math.sin(e.t * 2.2) * 0.03)
+      m.position.set(p.x, p.y + 0.95, p.z)
+      m.scale.set(s, s * 1.15, s)
+    })
+  }
+
   // The bonked player comes down: a thud (and, for someone else, a dust puff: your own landing
   // puffs in lane/index.js), then the dizzy birds tweet while they lie there.
   function landed(id) {
@@ -464,11 +501,14 @@ export function createBat(ctx) {
     if (!m || typeof m.to !== 'string') return
     const me = myId()
     const now = performance.now()
-    immune.set(m.to, now + BAT.immune * 1000)
+    // my own hits lock that player for me for long; anyone's hit gives the victim a short shield
+    const until = now + (m.by === me ? BAT.immune : BAT.shield) * 1000
+    immune.set(m.to, Math.max(immune.get(m.to) ?? 0, until))
     feedLine(m)
     const fish = FISH[m.fish] ? m.fish : ''
     const lie = BAT.knock.flight + BAT.knock.lie
     dizzy(m.to, lie + 0.3)
+    shieldFx(m.to, BAT.shield)
     later(BAT.knock.flight, () => landed(m.to))
 
     if (m.to === me) {

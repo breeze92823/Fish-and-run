@@ -418,7 +418,8 @@ export const BAT = {
   cooldown: 0.6, // s between swings (backend cooldownMs 550)
   windup: 0.12, // s of wind-up before the strike lands
   swing: 0.42, // s of the whole swing animation
-  immune: 3.5, // s a bonked player can't be hit again (backend immuneMs)
+  shield: 300, // s (5 min) anyone bonked is safe from every attacker, shown as a bubble (backend shieldMs)
+  immune: 600, // s before you can bonk the SAME player again (others are fine) (backend immuneMs)
   // The victim's flight: knocked up and away from the attacker, spinning, then lies dizzy.
   knock: { distance: 9, height: 6.5, flight: 0.95, lie: 1.0, getUp: 0.4 },
   hitStop: 0.075, // s the world nearly freezes on a hit you land / take
@@ -486,14 +487,15 @@ export const TREADMILL = {
   walk: 4.5,
   drift: 1.6,
   levels: [
-    { look: 'stone', per: 1, cost: 0 },
-    { look: 'stone', per: 3, cost: 2500 },
-    { look: 'wood', per: 10, cost: 15e3 },
-    { look: 'wood', per: 30, cost: 100e3 },
-    { look: 'gold', per: 100, cost: 750e3 },
-    { look: 'gold', per: 300, cost: 6e6 },
-    { look: 'amethyst', per: 1000, cost: 60e6 },
-    { look: 'amethyst', per: 3000, cost: 600e6 },
+    // `per` is in stat units: the HUD shows it x SPEED.display, so 0.1 reads +1.
+    { look: 'stone', per: 0.1, cost: 0 },
+    { look: 'stone', per: 0.3, cost: 2500 },
+    { look: 'wood', per: 1, cost: 15e3 },
+    { look: 'wood', per: 3, cost: 100e3 },
+    { look: 'gold', per: 10, cost: 750e3 },
+    { look: 'gold', per: 30, cost: 6e6 },
+    { look: 'amethyst', per: 100, cost: 60e6 },
+    { look: 'amethyst', per: 300, cost: 600e6 },
   ],
 }
 
