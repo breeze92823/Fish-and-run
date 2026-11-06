@@ -1,0 +1,539 @@
+/* Fishing Rods window (rods/window.js). Measured off the 1920x991 reference: every length
+   is design pixels times --u, e.g. calc(305 * var(--u)). --u is 1px on that screen, grows
+   with bigger screens, never drops below ~0.62px on tablets, and always shrinks to fit
+   the screen (phones). Portrait screens get a narrower window (about two cards wide) so
+   the cards stay big enough to read; the row of cards scrolls sideways everywhere. */
+.rw-overlay {
+  --dw: 1016; /* design size of the window */
+  --dh: 606;
+  --u: min(
+    calc((100vw - 20px) / var(--dw)),
+    calc((100vh - 20px) / (var(--dh) + 30)),
+    max(min(calc(100vw / 1920), calc(100vh / 991)), 0.62px)
+  );
+  --ink: #111116;
+  --stud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M7 25V7h18' fill='none' stroke='%23fff' stroke-opacity='.32' stroke-width='2.4'/%3E%3Cpath d='M25 7v18H7' fill='none' stroke='%23000' stroke-opacity='.12' stroke-width='2.4'/%3E%3C/svg%3E");
+  --stud-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M7 25V7h18' fill='none' stroke='%23000' stroke-opacity='.1' stroke-width='2.4'/%3E%3Cpath d='M25 7v18H7' fill='none' stroke='%23fff' stroke-opacity='.85' stroke-width='2.4'/%3E%3C/svg%3E");
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  box-sizing: border-box;
+  font-family: 'Fredoka', 'Arial Black', system-ui, sans-serif;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  animation: rw-fade 0.18s ease-out;
+}
+@supports (height: 100dvh) {
+  .rw-overlay {
+    --u: min(
+      calc((100vw - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) / var(--dw)),
+      calc((100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / (var(--dh) + 30)),
+      max(min(calc(100vw / 1920), calc(100dvh / 991)), 0.62px)
+    );
+  }
+}
+@media (orientation: portrait) {
+  .rw-overlay {
+    --dw: 660;
+  }
+}
+.rw-overlay[hidden] {
+  display: none;
+}
+.rw-overlay *,
+.rw-overlay *::before,
+.rw-overlay *::after {
+  box-sizing: border-box;
+}
+:where(.rw-overlay) button {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Outlined white text, Roblox style: the stroke sits behind the fill. */
+.rw-out {
+  color: #fff;
+  -webkit-text-stroke: calc(var(--sw, 6) * var(--u)) var(--ink);
+  paint-order: stroke fill;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* --- Frame ----------------------------------------------------------------------------- */
+.rw-win {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(var(--dw) * var(--u));
+  height: calc(var(--dh) * var(--u));
+  background: #0b0b0f;
+  border: calc(4 * var(--u)) solid #0b0b0f;
+  border-radius: calc(4 * var(--u));
+  box-shadow: 0 calc(10 * var(--u)) calc(30 * var(--u)) rgba(0, 0, 0, 0.35);
+  margin-bottom: calc(30 * var(--u)); /* a little above centre, like the reference */
+}
+.rw-win.pop {
+  animation: rw-pop 0.3s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.rw-overlay.closing {
+  animation: rw-fade 0.17s ease-in reverse forwards;
+}
+.rw-overlay.closing .rw-win {
+  animation: rw-shrink 0.17s ease-in forwards;
+}
+
+/* Header: orange stud bar with glossy streaks, red X, dark seam between them. */
+.rw-head {
+  display: flex;
+  gap: calc(4 * var(--u));
+  height: calc(92 * var(--u));
+  flex: none;
+}
+.rw-titlebar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--u));
+  padding-left: calc(10 * var(--u));
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(115deg, transparent 0 calc(140 * var(--u)), rgba(255, 255, 255, 0.13) calc(140 * var(--u)) calc(190 * var(--u)), transparent calc(190 * var(--u)) calc(230 * var(--u)), rgba(255, 255, 255, 0.08) calc(230 * var(--u)) calc(250 * var(--u))),
+    var(--stud) 0 0 / calc(30 * var(--u)) calc(30 * var(--u)),
+    linear-gradient(#fde62e, #fcc616 38%, #fc9a12 74%, #fb8510);
+  box-shadow: inset 0 calc(-7 * var(--u)) 0 #d86a06, inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.4);
+}
+.rw-ticon {
+  width: calc(88 * var(--u));
+  height: calc(78 * var(--u));
+  flex: none;
+  display: block;
+}
+.rw-ticon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.rw-titlebar h2 {
+  margin: 0;
+  font-size: calc(66 * var(--u));
+  font-weight: 700;
+  --sw: 11;
+  letter-spacing: calc(0.5 * var(--u));
+  text-shadow: 0 calc(4 * var(--u)) 0 var(--ink);
+  transform: translateY(calc(-3 * var(--u)));
+}
+.rw-close {
+  position: relative;
+  width: calc(92 * var(--u));
+  flex: none;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: var(--stud) 0 0 / calc(30 * var(--u)) calc(30 * var(--u)), linear-gradient(#f2506a, #e2334e 70%, #cf2440);
+  box-shadow: inset 0 calc(-7 * var(--u)) 0 #a3172e, inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.3);
+  transition: filter 0.1s;
+}
+.rw-close .rw-out {
+  font-size: calc(70 * var(--u));
+  --sw: 11;
+  text-shadow: 0 calc(3 * var(--u)) 0 var(--ink);
+}
+.rw-close::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+/* --- Body: one sideways-scrolling row of cards ----------------------------------------- */
+.rw-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: calc(3 * var(--u));
+  background: repeating-linear-gradient(135deg, #2c2c38 0 calc(14 * var(--u)), #292934 calc(14 * var(--u)) calc(28 * var(--u)));
+}
+.rw-track {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: calc(12 * var(--u));
+  padding: calc(11 * var(--u)) calc(12 * var(--u)) calc(4 * var(--u));
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  scrollbar-color: #050507 #24242e;
+  cursor: grab;
+}
+.rw-track.dragging {
+  cursor: grabbing;
+}
+.rw-track.dragging .rw-card {
+  pointer-events: none;
+}
+.rw-track::after {
+  content: '';
+  flex: none;
+  width: calc(1 * var(--u)); /* keeps the right padding when scrolled to the end */
+}
+.rw-track::-webkit-scrollbar {
+  height: calc(10 * var(--u));
+}
+.rw-track::-webkit-scrollbar-track {
+  background: #24242e;
+}
+.rw-track::-webkit-scrollbar-thumb {
+  background: #050507;
+  border-radius: 99px;
+  border: calc(1 * var(--u)) solid #24242e;
+}
+
+/* --- Card -------------------------------------------------------------------------------- */
+.rw-card {
+  --bg: #f6f6f6;
+  --bg2: #e4e4e4;
+  --edge: #ffffff;
+  --rar: #f4f4f4;
+  --stat: #7b7b7b;
+  --stat-edge: #3c3c3c;
+  --studimg: var(--stud);
+  position: relative;
+  flex: none;
+  width: calc(305 * var(--u));
+  height: calc(476 * var(--u));
+  border: calc(3 * var(--u)) solid #0e0e12;
+  border-radius: calc(3 * var(--u));
+  background: var(--studimg) 0 0 / calc(29 * var(--u)) calc(29 * var(--u)), linear-gradient(var(--bg), var(--bg2));
+  box-shadow: inset 0 0 0 calc(3 * var(--u)) var(--edge);
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+.rw-card[data-rarity='uncommon'] {
+  --bg: #6aff0a;
+  --bg2: #5cf404;
+  --edge: #9dff62;
+  --rar: #44e414;
+  --stat: #1e7b01;
+  --stat-edge: #0d3a00;
+}
+.rw-card[data-rarity='rare'] {
+  --bg: #1ee2ff;
+  --bg2: #0ad2fb;
+  --edge: #8cf2ff;
+  --rar: #12c4f4;
+  --stat: #05637a;
+  --stat-edge: #022c38;
+}
+.rw-card[data-rarity='epic'] {
+  --bg: #f810ff;
+  --bg2: #e600f6;
+  --edge: #fb8cff;
+  --rar: #d400e6;
+  --stat: #7a0a88;
+  --stat-edge: #3a0042;
+}
+.rw-card[data-rarity='legendary'] {
+  --bg: #ffde0f;
+  --bg2: #fb9608;
+  --edge: #ffe98a;
+  --rar: #fb9a0c;
+  --stat: #74400a;
+  --stat-edge: #321a00;
+}
+.rw-card[data-rarity='mythic'] {
+  --bg: #ff4040;
+  --bg2: #fe3434;
+  --edge: #ff9a9a;
+  --rar: #b5141c;
+  --stat: #7a1418;
+  --stat-edge: #380508;
+}
+.rw-card[data-rarity='secret'] {
+  --bg: #f4f4f6;
+  --bg2: #3c3c40;
+  --edge: #ffffff;
+  --rar: #d6d6d8;
+  --stat: #545458;
+  --stat-edge: #222226;
+}
+.rw-card[data-rarity='exotic'] {
+  --bg: #ffde00;
+  --bg2: #ffd000;
+  --edge: #fff07a;
+  --rar: #ffc800;
+  --stat: #6a5200;
+  --stat-edge: #2e2400;
+}
+.rw-card[data-rarity='common'],
+.rw-card[data-rarity='secret'] {
+  --studimg: var(--stud-dark);
+}
+
+.rw-pic {
+  position: absolute;
+  left: calc(2 * var(--u));
+  right: calc(2 * var(--u));
+  top: calc(20 * var(--u));
+  height: calc(355 * var(--u));
+  width: calc(100% - 4 * var(--u));
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.rw-pic:not([src]),
+.rw-pic[src=''] {
+  visibility: hidden;
+}
+.rw-name,
+.rw-rar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  z-index: 1;
+}
+.rw-name {
+  top: calc(13 * var(--u));
+  font-size: calc(35 * var(--u));
+  --sw: 8;
+}
+.rw-rar {
+  top: calc(52 * var(--u));
+  font-size: calc(27 * var(--u));
+  color: var(--rar);
+  --sw: 6;
+}
+.rw-stat {
+  position: absolute;
+  left: calc(15 * var(--u));
+  right: calc(15 * var(--u));
+  height: calc(48 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--stat);
+  border: calc(3 * var(--u)) solid var(--stat-edge);
+  border-radius: calc(2 * var(--u));
+  box-shadow: inset 0 calc(-3 * var(--u)) 0 rgba(0, 0, 0, 0.18);
+  z-index: 1;
+}
+.rw-stat.rw-speed {
+  top: calc(348 * var(--u));
+}
+.rw-stat.rw-luck {
+  top: calc(293 * var(--u));
+}
+.rw-stat .rw-out {
+  font-size: calc(31 * var(--u));
+  --sw: 7;
+}
+.rw-luck .rw-out {
+  font-size: calc(33 * var(--u));
+}
+.rw-stat b {
+  color: #3df21c;
+  font-weight: inherit;
+}
+
+/* Action row: Equip / Unequip (full width) or the cash price (centred). */
+.rw-act {
+  position: absolute;
+  left: calc(15 * var(--u));
+  right: calc(15 * var(--u));
+  top: calc(403 * var(--u));
+  height: calc(52 * var(--u));
+  display: flex;
+  justify-content: center;
+  z-index: 1;
+}
+.rw-btn {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  border: calc(3 * var(--u)) solid #15151b;
+  border-radius: calc(3 * var(--u));
+  background: var(--stud) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(100deg, #f4f212 0%, #d2f70a 35%, #a6f40e 65%, #7cee1c 100%);
+  box-shadow: inset 0 calc(-5 * var(--u)) 0 rgba(0, 70, 0, 0.28), inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.45);
+  transition: filter 0.1s, transform 0.08s;
+}
+.rw-btn::after {
+  content: '';
+  position: absolute;
+  inset: -5px -3px; /* tap target past the drawn edge (44px+ on phones) */
+}
+.rw-btn .rw-out {
+  font-size: calc(34 * var(--u));
+  --sw: 8;
+  text-shadow: 0 calc(2 * var(--u)) 0 var(--ink);
+}
+.rw-btn.unequip {
+  background: var(--stud) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#ff6266, #ff3e45 60%, #e8303a);
+  box-shadow: inset 0 calc(-5 * var(--u)) 0 rgba(110, 0, 10, 0.35), inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.4);
+}
+.rw-btn.price {
+  width: calc(132 * var(--u));
+}
+.rw-btn.price .rw-out {
+  font-size: calc(32 * var(--u));
+}
+.rw-btn.price.poor {
+  filter: saturate(0.85);
+}
+@media (hover: hover) {
+  .rw-btn:hover,
+  .rw-close:hover {
+    filter: brightness(1.08);
+  }
+}
+.rw-btn:active,
+.rw-close:active {
+  transform: scale(0.94);
+  filter: brightness(0.94);
+}
+.rw-btn.bump {
+  animation: rw-bump 0.24s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.rw-btn.shake {
+  animation: rw-shake 0.36s ease-out;
+}
+.rw-card.bought .rw-pic {
+  animation: rw-glint 0.6s ease-out;
+}
+.rw-card.bought::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 60%);
+  animation: rw-flash 0.6s ease-out forwards;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Cards slide in one after another when the window opens. */
+.rw-track.cascade .rw-card {
+  animation: rw-card-in 0.34s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  animation-delay: calc(var(--i, 0) * 32ms);
+}
+
+/* --- Floating messages (purchase / not enough cash) ------------------------------------- */
+.rw-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 3;
+}
+.rw-float {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: calc(30 * var(--u));
+  --sw: 7;
+  animation: rw-float 1.1s ease-out forwards;
+}
+.rw-float.bad {
+  color: #ff5a5a;
+}
+.rw-float.good {
+  color: #6bff2c;
+}
+.rw-coin {
+  position: absolute;
+  display: block;
+}
+.rw-coin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes rw-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rw-pop {
+  from {
+    transform: scale(0.82);
+    opacity: 0;
+  }
+}
+@keyframes rw-shrink {
+  to {
+    transform: scale(0.88);
+    opacity: 0;
+  }
+}
+@keyframes rw-bump {
+  40% {
+    transform: scale(1.08);
+  }
+}
+@keyframes rw-shake {
+  20%,
+  60% {
+    transform: translateX(calc(-6 * var(--u)));
+  }
+  40%,
+  80% {
+    transform: translateX(calc(6 * var(--u)));
+  }
+}
+@keyframes rw-card-in {
+  from {
+    transform: translateY(calc(40 * var(--u))) scale(0.92);
+    opacity: 0;
+  }
+}
+@keyframes rw-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes rw-glint {
+  40% {
+    transform: scale(1.06) rotate(-2deg);
+    filter: brightness(1.5);
+  }
+}
+@keyframes rw-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -30%) scale(0.7);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -60%) scale(1.08);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -180%) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rw-track.cascade .rw-card,
+  .rw-win.pop {
+    animation: none;
+  }
+}

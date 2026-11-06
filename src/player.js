@@ -3,6 +3,7 @@ import { getYaw, syncYawToPlayer } from './camera.js'
 import { isFirstPerson } from './modes.js'
 import { RAPIER, alpha, onTick, world } from './physics.js'
 import { PHYSICS, PLAYER_DIMS, SPAWN, SPAWN_FACING } from './config.js'
+import { runSpeed } from './speed.js'
 
 // The local player singleton, mutated in place. A kinematic Rapier capsule
 // driven by Rapier's KinematicCharacterController: it slides along walls,
@@ -17,7 +18,11 @@ export const player = {
   grounded: true,
   facing: SPAWN_FACING, // yaw the character model faces, radians
   dims: { ...PLAYER_DIMS },
-  racing: false, // race.js drives position/renderPosition itself; the controller stands still
+  speedScale: 1, // walk/sprint multiplier (HUD Slow Mode)
+  speedStat: 1, // the speed stat (speed.js: trained x trail), set by main.js; sets walk / sprint speed
+  conveyor: { x: 0, z: 0 }, // m/s the ground under you carries you (the plot treadmill's belt)
+  autoWalk: null, // { x, z, speed }: you walk this way (unit direction, m/s) while no move key is held (treadmill)
+  frozen: false, // true while fishing or knocked down: input is ignored, facing is set by the caller
 }
 
 const HALF = PLAYER_DIMS.height / 2 // capsule centre above the feet
@@ -63,6 +68,7 @@ export function respawn() {
 }
 
 const TAU = Math.PI * 2
+const NO_MOVE = { x: 0, z: 0 }
 // Turns angle `from` toward `to` by at most maxDelta, the short way round.
 function rotateTowards(from, to, maxDelta) {
   const diff = Math.atan2(Math.sin(to - from), Math.cos(to - from))
@@ -89,7 +95,6 @@ function step(dt) {
   prev.x = player.position.x
   prev.y = player.position.y
   prev.z = player.position.z
-  if (player.racing) return
 
   // Camera-relative ground basis.
   const yaw = getYaw()
@@ -97,17 +102,27 @@ function step(dt) {
   const fwdZ = -Math.cos(yaw)
   const rightX = Math.cos(yaw)
   const rightZ = -Math.sin(yaw)
-  const mv = inputState.move
+  const mv = player.frozen ? NO_MOVE : inputState.move
   const len = Math.hypot(mv.x, mv.z)
   const scale = len > 1 ? 1 / len : 1
-  const wishX = (fwdX * mv.z + rightX * mv.x) * scale
-  const wishZ = (fwdZ * mv.z + rightZ * mv.x) * scale
-  const speed = inputState.sprint ? PHYSICS.sprintSpeed : PHYSICS.walkSpeed
+  let wishX = (fwdX * mv.z + rightX * mv.x) * scale
+  let wishZ = (fwdZ * mv.z + rightZ * mv.x) * scale
+  // No input on the treadmill: you walk by yourself toward its console.
+  const auto = len <= 0.01 && !player.frozen && player.autoWalk
+  if (auto) {
+    wishX = player.autoWalk.x
+    wishZ = player.autoWalk.z
+  }
+  const run = runSpeed(player.speedStat, inputState.sprint)
+  const speed = auto ? player.autoWalk.speed : run * player.speedScale
 
-  const rate = !player.grounded ? PHYSICS.airAccel : len > 0.01 ? PHYSICS.accel : PHYSICS.decel
+  // Acceleration scales with the stat too, so a fast player still reaches top speed (and stops) as quickly.
+  const boost = run / (inputState.sprint ? PHYSICS.sprintSpeed : PHYSICS.walkSpeed)
+  const rate = (!player.grounded ? PHYSICS.airAccel : len > 0.01 || auto ? PHYSICS.accel : PHYSICS.decel) * boost
   approach2D(player.velocity, wishX * speed, wishZ * speed, rate * dt)
 
   // Jump: buffered a little before landing, and allowed a little after leaving a ledge.
+  if (inputState.jump && player.frozen) inputState.jump = false
   if (inputState.jump) {
     jumpQueued = PHYSICS.jumpBuffer
     inputState.jump = false
@@ -125,7 +140,7 @@ function step(dt) {
   player.velocity.y += PHYSICS.gravity * dt
   if (player.grounded && !jumped && player.velocity.y < -2) player.velocity.y = -2 // stay pressed to slopes
 
-  const desired = { x: player.velocity.x * dt, y: player.velocity.y * dt, z: player.velocity.z * dt }
+  const desired = { x: (player.velocity.x + player.conveyor.x) * dt, y: player.velocity.y * dt, z: (player.velocity.z + player.conveyor.z) * dt }
   controller.computeColliderMovement(collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS)
   const moved = controller.computedMovement()
   player.grounded = !jumped && controller.computedGrounded()

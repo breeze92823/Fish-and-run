@@ -1,0 +1,354 @@
+/* Active Fish panel (fishPanel.js). Every size is in design px (the 1920x991 reference)
+   times --u, so the panel keeps its proportions from a phone to a big monitor. */
+.fp-root {
+  --u: clamp(0.66px, 0.101vmin, 1.3px);
+  --ol: calc(var(--u) * 2.2); /* text outline */
+  --safe-r: env(safe-area-inset-right, 0px);
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  font-family: 'Fredoka', 'Arial Rounded MT Bold', system-ui, sans-serif;
+  font-weight: 700;
+  color: #fff;
+}
+.fp-root * {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+:where(.fp-root) button {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Chunky outlined game text. */
+.fp-txt {
+  text-shadow:
+    calc(var(--ol) * -1) calc(var(--ol) * -1) 0 #000, 0 calc(var(--ol) * -1) 0 #000, var(--ol) calc(var(--ol) * -1) 0 #000,
+    calc(var(--ol) * -1) 0 0 #000, var(--ol) 0 0 #000,
+    calc(var(--ol) * -1) var(--ol) 0 #000, 0 var(--ol) 0 #000, var(--ol) var(--ol) 0 #000,
+    0 calc(var(--ol) * 1.9) 0 #000;
+}
+
+/* --- The window: header + list, then the two green buttons ---------------------------- */
+.fp-wrap {
+  position: absolute;
+  right: calc(var(--safe-r) + var(--u) * 42);
+  top: 54.5%;
+  width: calc(var(--u) * 390);
+  transform: translate(calc(100% + var(--u) * 140), -50%);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 0.32s cubic-bezier(0.55, 0, 0.75, 0.2),
+    opacity 0.2s 0.1s,
+    visibility 0s 0.32s;
+}
+.fp-root.open .fp-wrap {
+  transform: translate(0, -50%);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    transform 0.42s cubic-bezier(0.2, 1.35, 0.4, 1),
+    opacity 0.12s,
+    visibility 0s;
+}
+
+.fp-panel {
+  border: calc(var(--u) * 3) solid #121318;
+  border-radius: calc(var(--u) * 4);
+  background: #23252e;
+  box-shadow: 0 calc(var(--u) * 5) 0 rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.fp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: calc(var(--u) * 51);
+  padding: 0 calc(var(--u) * 9) 0 calc(var(--u) * 10);
+  background:
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.13) 0 calc(var(--u) * 7), transparent calc(var(--u) * 7) calc(var(--u) * 15)),
+    linear-gradient(#ffe39c, #f6c35c 55%, #eeac3a);
+  border-bottom: calc(var(--u) * 3) solid #15161c;
+  box-shadow: inset 0 calc(var(--u) * 2) 0 rgba(255, 255, 255, 0.55);
+  font-size: calc(var(--u) * 26);
+  line-height: 1;
+  white-space: nowrap;
+}
+.fp-total b {
+  color: #6bff22;
+  font-weight: 700;
+}
+.fp-count,
+.fp-total b {
+  display: inline-block;
+}
+
+.fp-list {
+  height: calc(var(--u) * 272);
+  padding: calc(var(--u) * 17) calc(var(--u) * 13) calc(var(--u) * 10);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: #5a5d6a transparent;
+}
+.fp-list::-webkit-scrollbar {
+  width: calc(var(--u) * 6);
+}
+.fp-list::-webkit-scrollbar-thumb {
+  background: #5a5d6a;
+  border-radius: 99px;
+}
+.fp-empty {
+  margin-top: calc(var(--u) * 70);
+  text-align: center;
+  font-size: calc(var(--u) * 19);
+  color: #9a9db0;
+  font-weight: 600;
+}
+
+/* --- One fish card -------------------------------------------------------------------- */
+.fp-row {
+  display: flex;
+  align-items: center;
+  height: calc(var(--u) * 64);
+  margin-bottom: calc(var(--u) * 5);
+  padding: calc(var(--u) * 1) calc(var(--u) * 10) calc(var(--u) * 1) calc(var(--u) * 1);
+  background: linear-gradient(#30323d, #2a2c36);
+  border: calc(var(--u) * 2) solid #14151a;
+  box-shadow: inset 0 0 0 calc(var(--u) * 1) rgba(255, 255, 255, 0.05);
+  animation: fp-row-in 0.34s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  animation-delay: var(--d, 0s);
+}
+.fp-row.out {
+  overflow: hidden;
+  animation: fp-row-out 0.26s cubic-bezier(0.5, 0, 0.9, 0.4) forwards;
+  pointer-events: none;
+}
+@keyframes fp-row-in {
+  from {
+    transform: translateX(45%) scale(0.85);
+    opacity: 0;
+  }
+}
+@keyframes fp-row-out {
+  0% {
+    transform: none;
+    opacity: 1;
+    height: calc(var(--u) * 64);
+  }
+  55% {
+    transform: translateX(70%);
+    opacity: 0;
+    height: calc(var(--u) * 64);
+    margin-bottom: calc(var(--u) * 5);
+  }
+  100% {
+    transform: translateX(70%);
+    opacity: 0;
+    height: 0;
+    margin-bottom: 0;
+    border-width: 0;
+  }
+}
+.fp-thumb {
+  position: relative;
+  flex: none;
+  width: calc(var(--u) * 62);
+  height: calc(var(--u) * 58);
+  background: radial-gradient(circle at 45% 40%, #6f727e, #474a55 70%, #3c3e48);
+  border-radius: calc(var(--u) * 2);
+}
+.fp-thumb img {
+  position: absolute;
+  inset: calc(var(--u) * 2);
+  width: calc(100% - var(--u) * 4);
+  height: calc(100% - var(--u) * 4);
+  object-fit: contain;
+  filter: drop-shadow(0 calc(var(--u) * 2) calc(var(--u) * 1) rgba(0, 0, 0, 0.35));
+}
+/* Gold mutation: a little gold ingot in the corner. */
+.fp-gold {
+  position: absolute;
+  top: calc(var(--u) * 3);
+  right: calc(var(--u) * 1);
+  width: calc(var(--u) * 20);
+  height: calc(var(--u) * 13);
+  background: linear-gradient(#fff3a0, #ffc81a 45%, #d48a00);
+  clip-path: polygon(22% 0, 78% 0, 100% 100%, 0 100%);
+  filter: drop-shadow(0 0 calc(var(--u) * 1) #3a2600);
+}
+.fp-info {
+  flex: 1;
+  min-width: 0;
+  padding-left: calc(var(--u) * 10);
+  line-height: 1.05;
+}
+.fp-name {
+  font-size: calc(var(--u) * 21);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  --ol: calc(var(--u) * 1.4);
+}
+.fp-name.long {
+  font-size: calc(var(--u) * 16.5);
+  font-weight: 600;
+}
+.fp-earn {
+  margin-top: calc(var(--u) * 3);
+  font-size: calc(var(--u) * 19);
+  color: #63ef2c;
+  --ol: calc(var(--u) * 1.2);
+}
+.fp-unequip {
+  flex: none;
+  min-width: calc(var(--u) * 88);
+  height: calc(var(--u) * 31);
+  padding: 0 calc(var(--u) * 6);
+  background: linear-gradient(#ff3b43, #df1d27 60%, #c8121c);
+  border: calc(var(--u) * 2) solid #e8e8ea;
+  box-shadow: 0 0 0 calc(var(--u) * 1.5) #2a0608;
+  font-size: calc(var(--u) * 17);
+  --ol: calc(var(--u) * 1.2);
+  transition: scale 0.08s;
+}
+
+/* --- Green action buttons ------------------------------------------------------------- */
+.fp-actions {
+  display: flex;
+  gap: calc(var(--u) * 5);
+  margin-top: calc(var(--u) * 6);
+}
+.fp-btn {
+  flex: 1;
+  height: calc(var(--u) * 47);
+  background: linear-gradient(#a6ff4a, #79ec12 50%, #56cc04);
+  border: calc(var(--u) * 3) solid #173c03;
+  border-radius: calc(var(--u) * 2);
+  box-shadow:
+    inset 0 calc(var(--u) * 3) 0 rgba(255, 255, 255, 0.45),
+    inset 0 calc(var(--u) * -4) 0 rgba(0, 60, 0, 0.22),
+    0 calc(var(--u) * 4) 0 rgba(0, 0, 0, 0.25);
+  font-size: calc(var(--u) * 25);
+  white-space: nowrap;
+  transition: scale 0.08s, filter 0.15s;
+}
+.fp-slot {
+  word-spacing: calc(var(--u) * 6);
+}
+.fp-btn.max {
+  filter: grayscale(0.7) brightness(0.85);
+}
+
+/* --- The ">" tab that closes it ------------------------------------------------------- */
+.fp-close {
+  position: absolute;
+  left: calc(var(--u) * -68);
+  top: calc(var(--u) * 138);
+  width: calc(var(--u) * 58);
+  height: calc(var(--u) * 58);
+  background: linear-gradient(#ff5a7a, #ec2f57 55%, #d01c45);
+  border: calc(var(--u) * 3) solid #3a0814;
+  border-radius: calc(var(--u) * 3);
+  box-shadow:
+    inset 0 calc(var(--u) * 3) 0 rgba(255, 255, 255, 0.4),
+    0 calc(var(--u) * 4) 0 rgba(0, 0, 0, 0.25);
+  font-size: calc(var(--u) * 38);
+  line-height: 1;
+  scale: 0;
+  transition: scale 0.18s cubic-bezier(0.5, 0, 0.75, 0);
+}
+.fp-root.open .fp-close {
+  scale: 1;
+  transition: scale 0.3s 0.18s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+/* --- Feedback ---------------------------------------------------------------------------- */
+.fp-root button:active {
+  scale: 0.92;
+}
+.fp-root.open .fp-close:active {
+  scale: 0.9;
+}
+@media (hover: hover) {
+  .fp-root button:hover {
+    filter: brightness(1.08);
+  }
+}
+.bump {
+  animation: fp-bump 0.35s cubic-bezier(0.2, 1.8, 0.4, 1);
+}
+@keyframes fp-bump {
+  40% {
+    transform: scale(1.22);
+  }
+}
+.fp-btn.shake {
+  animation: fp-shake 0.36s;
+  filter: saturate(0.3) brightness(0.9) sepia(0.6) hue-rotate(-60deg);
+}
+@keyframes fp-shake {
+  20%,
+  60% {
+    transform: translateX(calc(var(--u) * -7));
+  }
+  40%,
+  80% {
+    transform: translateX(calc(var(--u) * 7));
+  }
+}
+/* +1 Slot bought: the count flashes green. */
+.fp-count.gain {
+  animation: fp-bump 0.4s cubic-bezier(0.2, 1.8, 0.4, 1), fp-gain 0.8s;
+}
+@keyframes fp-gain {
+  0%,
+  50% {
+    color: #8dff4a;
+  }
+}
+
+/* Touch: grow every button's hit area (invisibly) toward the 44px tap-target minimum. */
+@media (pointer: coarse) {
+  .fp-unequip,
+  .fp-btn {
+    position: relative;
+  }
+  .fp-unequip::after,
+  .fp-btn::after,
+  .fp-close::after {
+    content: '';
+    position: absolute;
+    inset: -10px -6px;
+  }
+  .fp-btn::after {
+    inset: -4px -2px -10px;
+  }
+}
+
+/* Landscape phones: centre the panel in the space above the thumb buttons. */
+@media (max-height: 480px) {
+  .fp-wrap {
+    top: 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-wrap,
+  .fp-root.open .fp-wrap {
+    transition-duration: 0.01s;
+  }
+  .fp-row {
+    animation-duration: 0.01s;
+  }
+}

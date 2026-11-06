@@ -1,82 +1,68 @@
-// The other players in the room, drawn in the world (after Clean-leaves-for-loot's remotePlayers.js):
-// each is their Bloxity avatar standing in their equipped boat (hull, engines in the equipped
-// engine's colours x the boat's engine count), their trail behind it, their pets hovering round it,
-// their partner on the deck and a name tag, eased toward the pose the server last relayed (net.js
-// roster), plus speed x heading for the time since (dead reckoning), so fast racers glide instead
-// of stepping. Poses are in TRACK coordinates (z minus the sender's race scroll): drawn at
-// z + this player's own scroll, racers line up in the lane and lobby players slide away with the
-// start island while this player races. Diffed against the roster every frame, so joins / leaves /
-// gear changes need no events. Nearest first, capped (fewer on touch); pets, partner and trail only
-// up close; a remote boat is `lite` (boat.js) and its hull baked, without shadows (draw calls).
+// The other players in the room, drawn in the world (after Scare Your Neighbor's remotePlayers.js).
+// Everything comes from the synced roster (net.js roster(), backend PlayerState), diffed against the
+// scene every frame, so joins / leaves / look changes need no events:
+//   * their Bloxity avatar (skin texture, accessories, proportions) on the same base rig the local
+//     player uses, and a name tag;
+//   * the procedural animations (idle, run, jump / fall, landing), what is in the right hand (their
+//     rod, the bat or a backpack fish: tools.js), the fish held overhead on the run home (the lane's
+//     carry pose) and lying flat while a guard has knocked them down;
+//   * their equipped trail as a ribbon behind them.
+// Poses are eased toward the last one relayed plus speed x heading for the time since (dead
+// reckoning), so fast runners glide instead of stepping. Nearest first, capped (fewer on touch).
 import { Group } from 'three'
-import { BOATS, COARSE_POINTER, NET } from './config.js'
-import { roster, net, sameWorld } from './net.js'
-import { createBoat } from './boat.js'
-import { buildBoat } from './boatModels.js'
-import { ENGINES } from './engine.js'
-import { trailById } from './trails.js'
-import { createTrail } from './trail.js'
-import { createCompanions } from './companions.js'
+import { COARSE_POINTER, FISH, NET, PLAYER_DIMS, TRAILS } from './config.js'
+import { roster, net } from './net.js'
 import { label } from './propkit.js'
-import { bake } from './bake.js'
-import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
-import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
+import { buildDefaultCharacter } from './avatar/character.js'
+import { buildLook } from './avatar/look.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
+import { equipTool } from './tools.js'
+import { fishMesh } from './hub/fish.js'
+import { createTrail } from './hub/trail.js'
+import { POSE } from './lane/index.js'
 
-const angleDelta = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from))
-const engineById = new Map(ENGINES.map((e) => [e.id, e]))
-const boatById = new Map(BOATS.list.map((b) => [b.id, b]))
 const MAX = COARSE_POINTER ? NET.maxRemotesTouch : NET.maxRemotes
-
-// "dog:0,cat:2" -> [{ kind, tier }]
-function parsePets(s) {
-  if (!s) return []
-  return s.split(',').map((x) => {
-    const [kind, tier] = x.split(':')
-    return { kind, tier: Number(tier) || 0 }
-  })
-}
-
-// A catalog hull merged to a few meshes (one per material), shadows off: cheap to draw many.
-function bakedHull(id) {
-  const src = buildBoat(id)
-  const model = bake(src)
-  model.userData = { ...src.userData }
-  src.traverse((o) => o.isMesh && o.geometry.dispose()) // the baked copy keeps the materials
-  return model
-}
+const HELD_LENGTH = 2.0 // m: the overhead catch, as lane/index.js draws your own
+const trailColors = new Map(TRAILS.map((t) => [t.id, t.colors]))
+const angleDelta = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from))
 
 class Remote {
   constructor(scene) {
     this.scene = scene
     this.group = new Group()
+    this.group.rotation.order = 'YXZ' // yaw, then the knocked-down tip
     this.group.visible = false
     scene.add(this.group)
-    this.boat = createBoat({ lite: true })
-    this.group.add(this.boat.root)
-    this.trail = createTrail(scene, this.boat.root)
-    this.companions = createCompanions(scene, this.boat.seat)
     this.avatar = null
     this.animator = null
     this.avatarJson = null // what the current rig was built from
     this.generation = 0
-    this.applied = {} // boat / engine / trail / pets / partner / name as last applied
+    this.applied = { tool: '', hold: '', trail: '', name: null } // as last applied
+    this.carried = null // the overhead fish
+    this.trail = null
     this.label = null
     this.placed = false
-    this.detail = true
+    this.fall = 0
     this.base = { x: 0, y: 0, z: 0, yaw: 0, speed: 0, at: 0, key: '' }
-    this.lastY = 0
-    this.vy = 0
     this.setAvatar(buildDefaultCharacter())
   }
 
   setAvatar(next) {
-    if (this.avatar) this.boat.rider.remove(this.avatar)
-    disposeAnimator(this.animator)
+    if (this.avatar) this.group.remove(this.avatar)
     this.avatar = next
-    next.traverse((o) => o.isMesh && (o.castShadow = false)) // shadow passes add up in a full room
-    this.boat.rider.add(next)
-    this.animator = makeAnimator(next)
+    this.group.add(next)
+    this.rebuildRig()
+  }
+
+  // Tools attach in the bind pose: a fresh animator around the reset rig, then the tool, then the
+  // overhead pose again if they are carrying a catch.
+  rebuildRig() {
+    disposeAnimator(this.animator)
+    this.animator = makeAnimator(this.avatar)
+    const [slot, item, rod] = this.applied.tool.split('|')
+    const s = this.applied.hold ? 0 : Number(slot) || 0 // both hands are on the catch
+    equipTool(this.avatar, s, s === 3 ? item || null : null, rod || undefined)
+    if (this.applied.hold) this.animator?.setOverlay(POSE.carry, 100)
   }
 
   // A signed-in player's look arrives as JSON { equipped, proportions, skin }; "" = default.
@@ -92,124 +78,119 @@ class Remote {
       return
     }
     try {
-      const group = await loadBaseCharacter()
-      if (mine !== this.generation) return
-      await attachEquippedAccessories(group, look?.equipped, { skinTextureUrl: look?.skin || undefined })
-      if (mine !== this.generation) return
-      applyProportions(group, look?.proportions)
-      this.setAvatar(group)
+      const group = await buildLook({ equipped: look?.equipped, proportions: look?.proportions, skin: look?.skin || undefined }, () => mine !== this.generation)
+      if (group && mine === this.generation) this.setAvatar(group)
     } catch (err) {
       console.warn('[remote] avatar failed to load', err)
     }
   }
 
-  // Gear and name: rebuilt only when they change.
-  syncGear(p) {
-    const a = this.applied
-    if (p.boat !== a.boat) {
-      a.boat = p.boat
-      const model = bakedHull(boatById.has(p.boat) ? p.boat : BOATS.start.equipped) // none sent yet: the starter
-      const old = this.boat.setHull(model)
-      model.traverse((o) => o.isMesh && (o.castShadow = false))
-      old.traverse((o) => o.isMesh && o.geometry.dispose())
-      a.engine = undefined // the engine count comes with the boat
+  setCarried(species) {
+    if (this.carried) {
+      this.carried.removeFromParent()
+      this.carried = null
     }
-    if (p.engine !== a.engine) {
-      a.engine = p.engine
-      const count = boatById.get(boatById.has(p.boat) ? p.boat : BOATS.start.equipped)?.engines ?? 1
-      this.boat.setEngines(engineById.get(p.engine)?.look ?? null, count)
+    if (!species || !FISH[species]) return
+    const f = fishMesh(species, { labels: false, aura: false })
+    f.scale.setScalar(HELD_LENGTH / FISH[species].size)
+    f.position.set(0, 2.45, 0)
+    f.rotation.set(0, Math.PI / 2, 0)
+    this.group.add(f)
+    this.carried = f
+  }
+
+  // Hand, overhead catch, trail and name: rebuilt only when they change.
+  sync(p) {
+    const a = this.applied
+    const tool = `${p.slot}|${p.item}|${p.rod}`
+    const hold = p.hold && FISH[p.hold] ? p.hold : ''
+    if (tool !== a.tool || hold !== a.hold) {
+      const holdChanged = hold !== a.hold
+      a.tool = tool
+      a.hold = hold
+      if (holdChanged) this.setCarried(hold)
+      this.rebuildRig()
     }
     if (p.trail !== a.trail) {
       a.trail = p.trail
-      a.trailShown = undefined
-    }
-    if (p.pets !== a.pets) {
-      a.pets = p.pets
-      this.companions.setPets(parsePets(p.pets))
-    }
-    if (p.partner !== a.partner) {
-      a.partner = p.partner
-      this.companions.setPartner(p.partner)
+      const colors = trailColors.get(p.trail)
+      if (colors) {
+        if (!this.trail) this.trail = createTrail(this.scene, colors)
+        else this.trail.setColors(colors)
+        this.trail.reset()
+        this.trail.mesh.visible = true
+      } else if (this.trail) this.trail.mesh.visible = false
     }
     const name = p.username || 'Player'
     if (name !== a.name) {
       a.name = name
-      if (this.label) {
-        this.group.remove(this.label)
-        this.label.material.map?.dispose()
-        this.label.material.dispose()
-      }
-      this.label = label(name, 0.5, { color: '#ffffff', outline: '#1a0a14', font: '700 64px Fredoka, sans-serif', outlineWidth: 10 })
-      this.label.position.y = 3.6
+      this.dropLabel()
+      this.label = label(name, 0.42, { color: '#ffffff', outline: '#1a1c26' })
+      this.label.position.y = PLAYER_DIMS.height + 0.6
       this.group.add(this.label)
     }
   }
 
-  // Pets, partner and trail only up close.
-  setDetail(on) {
-    if (on === this.detail) return
-    this.detail = on
-    this.companions.setVisible(on)
-    this.applied.trailShown = undefined
-  }
-
-  update(p, dt, t, now, scroll, scrollSpeed, camera, near) {
-    this.syncGear(p)
-    this.syncAvatar(p.avatar)
-    this.setDetail(near)
-    const trail = near ? p.trail : ''
-    if (trail !== this.applied.trailShown) {
-      this.applied.trailShown = trail
-      this.trail.set(trail ? trailById(trail) : null)
-    }
-
+  update(p, dt, now) {
     // A new pose resets the dead-reckoning base.
     const b = this.base
     const key = `${p.x}|${p.y}|${p.z}|${p.yaw}|${p.speed}`
     if (key !== b.key) Object.assign(b, { key, x: p.x, y: p.y, z: p.z, yaw: p.yaw, speed: p.speed, at: now })
-    const ahead = Math.min((now - b.at) / 1000, NET.predictMax) * b.speed
+    const ahead = p.knocked ? 0 : Math.min((now - b.at) / 1000, NET.predictMax) * b.speed
     const tx = b.x + Math.sin(b.yaw) * ahead
-    const tz = b.z + Math.cos(b.yaw) * ahead + scroll
+    const tz = b.z + Math.cos(b.yaw) * ahead
     const g = this.group
     const far = Math.hypot(tx - g.position.x, tz - g.position.z) > 30
     const k = this.placed && !far ? 1 - Math.exp(-NET.remoteLerp * dt) : 1
+    // Knocked down by a guard: flat on the back while it lasts (the throw itself comes through the pose).
+    const lying = p.knocked && p.grounded
+    this.fall = lying ? Math.min(1, this.fall + dt * 7) : Math.max(0, this.fall - dt * 3)
     g.position.x += (tx - g.position.x) * k
-    g.position.y += (b.y - g.position.y) * k
+    g.position.y += (b.y + this.fall * 0.22 - g.position.y) * k
     g.position.z += (tz - g.position.z) * k
     g.rotation.y += angleDelta(g.rotation.y, b.yaw) * k
-    this.vy = this.placed && dt > 0 ? this.vy + ((g.position.y - this.lastY) / dt - this.vy) * Math.min(1, dt * 10) : 0
-    this.lastY = g.position.y
+    g.rotation.x = -this.fall * Math.PI * 0.5
     this.placed = true
-
-    this.boat.update(dt, b.speed, 0, t)
-    this.animator?.update(dt, { grounded: Math.abs(this.vy) < 0.5, speed: 0, verticalVelocity: this.vy, turn: 0 })
-    if (near) {
-      this.companions.update(dt, t, g.position.x, g.position.y, g.position.z, g.rotation.y)
-      if (this.applied.trailShown) this.trail.update(dt, camera, scrollSpeed)
+    if (this.carried) {
+      const t = now / 1000
+      this.carried.rotation.z = Math.sin(t * 9) * 0.15 // the fish flaps
+      this.carried.position.y = 2.55 + Math.abs(Math.sin(t * 9)) * 0.06
     }
+
+    this.animator?.update(dt, {
+      grounded: p.grounded,
+      speed: p.knocked ? 0 : b.speed,
+      verticalVelocity: p.vy,
+      turn: 0,
+    })
+    if (this.trail?.mesh.visible) this.trail.update(dt, g.position.x, g.position.y, g.position.z)
   }
 
   hide() {
     this.group.visible = false
-    this.companions.setVisible(false)
-    if (this.applied.trailShown) this.trail.set(null)
-    this.applied.trailShown = ''
-    this.detail = false
     this.placed = false // snap into place when it comes back
+    if (this.trail) this.trail.mesh.visible = false
+    this.applied.trail = null // shown again (reset) when they come back
+  }
+
+  dropLabel() {
+    if (!this.label) return
+    this.group.remove(this.label)
+    this.label.material.map?.dispose()
+    this.label.material.dispose()
+    this.label = null
   }
 
   dispose() {
     this.generation++ // an avatar still loading is dropped
     this.scene.remove(this.group)
     disposeAnimator(this.animator)
-    this.trail.dispose()
-    this.companions.dispose() // takes the partner (shared, cached geometry) off the seat first
-    this.boat.rider.remove(this.avatar) // rig geometry is shared with every other character
-    if (this.label) {
-      this.label.material.map?.dispose()
-      this.label.material.dispose()
+    this.dropLabel()
+    if (this.trail) {
+      this.scene.remove(this.trail.mesh)
+      this.trail.mesh.geometry.dispose()
+      this.trail.mesh.material.dispose()
     }
-    this.boat.root.traverse((o) => o.isMesh && o.geometry.dispose()) // hull + engines: this boat's own
   }
 }
 
@@ -226,30 +207,14 @@ export function createRemotePlayers(scene) {
     get count() {
       return remotes.size
     },
-    // Dev: what each drawn remote costs (meshes = draw calls; shadow casters draw again).
-    stats() {
-      return [...remotes.values()].filter((r) => r.group.visible).map((r) => {
-        const st = { meshes: 0, shadow: 0 }
-        r.group.traverseVisible((o) => {
-          if (!o.isMesh && !o.isSprite) return
-          st.meshes++
-          if (o.castShadow) st.shadow++
-        })
-        st.pets = r.companions.petCount
-        st.meshes += st.pets + (r.applied.trailShown ? 1 : 0)
-        return { boat: r.applied.boat, engine: r.applied.engine, ...st }
-      })
-    },
-    // viewer: this player's drawn position; scroll: this player's race scroll (m, race.trackScroll)
-    // and its speed (m/s, for the trails); camera for the trails.
-    update(dt, t, viewer, scroll, scrollSpeed, camera) {
+    // viewer: this player's drawn position.
+    update(dt, viewer) {
       const players = roster()
       if (!players) return remotes.size && clear()
       const mine = net.sessionId
       list.length = 0
       players.forEach((p, id) => {
-        if (id === mine || !sameWorld(p)) return // a player in the other world isn't here
-        list.push({ id, p, d: Math.hypot(p.x - viewer.x, p.z + scroll - viewer.z) })
+        if (id !== mine) list.push({ id, p, d: Math.hypot(p.x - viewer.x, p.z - viewer.z) })
       })
       list.sort((a, b) => a.d - b.d)
       const now = performance.now()
@@ -259,13 +224,14 @@ export function createRemotePlayers(scene) {
         keep.add(id)
         let r = remotes.get(id)
         if (!r) remotes.set(id, (r = new Remote(scene)))
-        const range = p.racing ? NET.raceFade : NET.remoteFade
-        if (d > range) {
+        r.syncAvatar(p.avatar)
+        if (d > NET.remoteFade) {
           if (r.group.visible || r.placed) r.hide()
           continue
         }
+        r.sync(p)
         r.group.visible = true
-        r.update(p, dt, t, now, scroll, scrollSpeed, camera, d < NET.detailRange)
+        r.update(p, dt, now)
       }
       for (const [id, r] of remotes) {
         if (keep.has(id)) continue

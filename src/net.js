@@ -1,16 +1,17 @@
-// Colyseus link to Boat-race-with-99-engine-backend (room "world"), after Kayak & Surf's net.js.
-// The server holds the player's ONLY save: nothing about progress is kept in the browser. On join
-// the server answers with `progress` (the saved doc: every store's hydrate() takes its part),
-// `noProgress` (new account, guest or no database: keep the fresh state and save it) or
-// `serverError` (the save could not be read: never overwrite it). From then on the whole snapshot
-// (HUD trophies + gems, playtime and every store's snapshot()) is sent as `saveProgress` whenever
-// it changed, at most every NET.saveEvery s, and when the tab hides or closes.
-// Guests (not signed in to Bloxity) are never saved by the server, so their progress lasts the page.
-// Never throws and never blocks play: with no server (or an unreachable one) the game runs on a
-// fresh, unsaved state and keeps trying to connect.
-import { Client } from '@colyseus/sdk'
-import { DEV_MODE, NET, SERVER_URL, WORLDS } from './config.js'
-import { worldState } from './worlds.js'
+// Colyseus link to the Fish and Run backend (room "world", capped at the number of plots). Ported from
+// Scare Your Neighbor's net.js.
+// The server holds the player's ONLY save: nothing about progress is kept in the browser. On join the
+// server answers with `progress` (the saved doc: every store's hydrate() takes its part), `noProgress`
+// (new account, guest or no database: keep the fresh state and save it) or `serverError` (the save
+// could not be read: never overwrite it). From then on the whole snapshot is sent as `saveProgress`
+// whenever it changed, at most every NET.saveEvery s, and when the tab hides or closes. Guests (not
+// signed in to Bloxity) are never saved by the server.
+// Besides saving, the room carries presence (remotePlayers.js draws everyone from the roster), each
+// player's plot (`plot`: the fish in their pool, their treadmill) and the leaderboards. Never throws
+// and never blocks play: with no server (or an unreachable one) the game runs on a fresh, unsaved
+// state and keeps trying to connect.
+import { Callbacks, Client } from '@colyseus/sdk'
+import { DEV_MODE, MY_PLOT, NET, SERVER_URL } from './config.js'
 import {
   authState,
   canResolveServer,
@@ -20,6 +21,7 @@ import {
   getSkinTextureUrl,
   launchRoomId,
   locateRoom,
+  reportPlayer,
   resolveServerEndpoint,
   subscribeAuth,
   updateRoom,
@@ -29,6 +31,7 @@ export const net = {
   room: null,
   connected: false,
   hydrated: false, // a progress/noProgress answer arrived: saving is allowed
+  base: -1, // the plot the server gave this player (PLOTS index), -1 = none yet
   // Seconds played (tab visible), saved progress included once it loads.
   get playtime() {
     return Math.floor(playtime)
@@ -40,20 +43,21 @@ export const net = {
 
 // --- Identity ----------------------------------------------------------------
 // Signed-in players use their Bloxity id; everyone else a per-browser guest id (never saved).
-// Dev mode (no SDK) plays as a per-browser signed-in dev id, so a local server with Mongo keeps
-// its progress across reloads. Only these ids are stored in the browser, never progress.
-function storedId(key, make) {
+// Dev mode (no SDK) plays as a signed-in dev id, so a local server with Mongo keeps its progress.
+// Only these ids are stored in the browser, never progress. The dev id is per tab, so two tabs of a
+// dev build are two players (one account never has two live sessions: the server evicts the first).
+function storedId(store, key, make) {
   try {
-    let id = localStorage.getItem(key)
-    if (!id) localStorage.setItem(key, (id = make()))
+    let id = store.getItem(key)
+    if (!id) store.setItem(key, (id = make()))
     return id
   } catch {
     return make()
   }
 }
 const rand = () => Math.random().toString(36).slice(2, 8)
-const GUEST = storedId('boat-race-99.guest', () => `guest-${rand()}`)
-const DEV = DEV_MODE ? storedId('boat-race-99.dev', () => `dev-${rand()}`) : ''
+const GUEST = storedId(localStorage, 'fish-and-run.guest', () => `guest-${rand()}`)
+const DEV = DEV_MODE ? storedId(sessionStorage, 'fish-and-run.dev', () => `dev-${rand()}`) : ''
 
 function identity() {
   if (DEV) return { userId: DEV, username: `Dev ${DEV.slice(4)}` }
@@ -69,21 +73,21 @@ let lastSaved = ''
 let savedAt = 0
 let sentId = '' // identity the server currently attributes saves to
 let loadedId = '' // identity whose saved progress this tab has already loaded
-let hud = null // initNet's: trophies and gems live in its stats
-let stores = [] // initNet's: { snapshot() -> part of the save, hydrate(doc) }
+let stores = [] // { snapshot() -> part of the save, hydrate(doc) }
+let pendingDoc = null // a loaded save that arrived before the stores were registered
 
-// The saved progress (backend sanitize.ts sanitizeProgress).
 const progress = () => {
-  const out = { trophies: hud?.getStat('trophies') ?? 0, gems: hud?.getStat('gems') ?? 0, playtime: Math.floor(playtime) }
+  const out = { playtime: Math.floor(playtime) }
   for (const s of stores) Object.assign(out, s.snapshot())
   return out
 }
 const isGuest = () => sentId.startsWith('guest-')
 
-// A loaded save over the local state: every store resets to a new player's state, then takes its part.
+// A loaded save over the local state: every store takes its part.
 function hydrate(doc) {
-  for (const key of ['trophies', 'gems']) if (Number.isFinite(doc[key]) && doc[key] >= 0) hud?.setStat(key, doc[key])
-  if (Number.isFinite(doc.playtime)) playtime = doc.playtime
+  if (!stores.length) return void (pendingDoc = doc)
+  pendingDoc = null
+  if (Number.isFinite(doc.playtime)) playtime = Math.max(playtime, doc.playtime)
   for (const s of stores) {
     try {
       s.hydrate(doc)
@@ -94,7 +98,7 @@ function hydrate(doc) {
 }
 
 export function saveNow() {
-  if (!net.connected || !net.hydrated || isGuest()) return
+  if (!net.connected || !net.hydrated || isGuest() || !stores.length) return
   const snap = JSON.stringify(progress())
   if (snap === lastSaved) return
   lastSaved = snap
@@ -110,7 +114,6 @@ function send(type, payload) {
   }
 }
 
-// --- Server-decided features (Daily Reward, Spin wheel) ------------------------------------
 // Handlers registered here are attached to every room this tab joins (reconnects included).
 const handlers = []
 export function onNetMessage(type, fn) {
@@ -123,38 +126,33 @@ export function sendNet(type, payload) {
   send(type, payload)
   return true
 }
+// The server also runs the Spin wheel and the Daily Reward (no client UI yet): listened to so the
+// SDK doesn't warn about unhandled messages.
+onNetMessage('spins', () => {})
+onNetMessage('daily', () => {})
 
-// A roster entry is in this player's world (worlds.js; "" from an older client = the start world).
-export const sameWorld = (p) => (p.world || WORLDS.start) === worldState.current
+// --- Roster ---------------------------------------------------------------------
+// Everyone in the room (sessionId -> roster entry), null when offline.
+export const roster = () => (net.connected ? net.room?.state?.players ?? null : null)
 
-// --- Racers (roster) -----------------------------------------------------------
-// Everyone else in the room who is racing right now: [{ id, name, distance, pfp }] for the HUD's
-// distance bar and podium. Read from the synced roster (backend PlayerState), [] when offline.
-export function remoteRacers() {
-  const out = []
-  net.room?.state?.players?.forEach?.((p, id) => {
-    if (id !== net.sessionId && p.racing && sameWorld(p)) out.push({ id, name: p.username || 'Player', distance: p.distance || 0, pfp: p.pfp || '' })
-  })
-  return out
+// --- Leaderboards (the room's boards: backend leaderboard.ts) ------------------------------------
+export const leaderboard = { boards: {}, ranks: {}, at: 0 }
+const boardListeners = new Set()
+export function onLeaderboard(fn) {
+  boardListeners.add(fn)
+  if (leaderboard.at) fn(leaderboard)
+  return () => boardListeners.delete(fn)
 }
-
-// This player's race for the others' bars: sent at most every NET.raceEvery s while racing, and
-// at once when it starts or ends.
-let raceSentAt = 0
-let raceSent = false
-export function sendRace(racing, distance) {
-  if (!net.connected) return
-  const now = performance.now()
-  if (racing === raceSent && (!racing || now - raceSentAt < NET.raceEvery * 1000)) return
-  raceSent = racing
-  raceSentAt = now
-  send('race', { racing, distance: racing ? Math.floor(distance) : 0 })
-}
+onNetMessage('leaderboard', (m) => {
+  leaderboard.boards = m?.boards ?? {}
+  leaderboard.ranks = m?.ranks ?? {}
+  leaderboard.at = Date.now()
+  for (const fn of boardListeners) fn(leaderboard)
+})
 
 // --- Presence (remotePlayers.js) --------------------------------------------------
-// What the others need to draw this player: the pose (track coordinates, see race.trackScroll),
-// the equipped gear and the Bloxity look. The latest of each also rides on the join options, so a
-// (re)join shows up right away. The roster (`net.room.state.players`) carries everyone's.
+// What the others need to draw this player: the pose, what it holds / uses and the Bloxity look. The
+// latest of each also rides on the join options, so a (re)join shows up right away.
 const AVATAR_MAX = 3000 // backend AVATAR_MAX_LEN
 // The signed-in player's look as JSON { equipped, proportions, skin }; the skin URL is dropped
 // first when it doesn't fit. "" = the default character.
@@ -172,23 +170,26 @@ function avatarJson() {
   }
   return ''
 }
-const presence = { pose: null, loadout: null }
+const presence = { pose: null, loadout: null, plot: '' }
 let poseKey = ''
 let poseAt = 0
-// { x, y, z, yaw, speed }: at most NET.poseHz a second, nothing while it stands still.
+const q = (v, k = 100) => Math.round(v * k) / k
+// { x, y, z, yaw, speed, vy, grounded, knocked }: at most NET.poseHz a second, nothing while it stands still.
 export function sendPose(pose) {
-  presence.pose = pose
+  const p = { x: q(pose.x), y: q(pose.y), z: q(pose.z), yaw: q(pose.yaw), speed: q(pose.speed, 10), vy: q(pose.vy, 10), grounded: !!pose.grounded, knocked: !!pose.knocked }
+  presence.pose = p
   if (!net.connected) return
   const now = performance.now()
   if (now - poseAt < 1000 / NET.poseHz) return
-  const key = `${pose.x}|${pose.y}|${pose.z}|${pose.yaw}|${pose.speed}`
+  const key = Object.values(p).join('|')
   if (key === poseKey) return
   poseKey = key
   poseAt = now
-  send('pose', pose)
+  send('pose', p)
 }
 let loadoutKey = ''
-// { boat, engine, trail, partner, pets: [{ kind, tier }], world }: sent when it changes.
+// { rod, trail, slot, item, hold }: sent when it changes. slot 0 none / 1 rod / 2 bat / 3 a backpack
+// fish (item = its species); hold = the species carried overhead out of the lane ("" = none).
 export function sendLoadout(loadout) {
   presence.loadout = loadout
   const key = JSON.stringify(loadout)
@@ -205,15 +206,38 @@ export function syncAvatar() {
   sentAvatar = avatar
   send('setAvatar', { avatar })
 }
-// Everyone in the room (sessionId -> roster entry), null when offline.
-export const roster = () => (net.connected ? net.room?.state?.players ?? null : null)
+
+// This player's plot for the others (plots.js setOwner): a JSON snapshot, resent only when it changed.
+let plotSent = ''
+export function sendPlot(json) {
+  presence.plot = json
+  if (!net.connected || json === plotSent) return
+  plotSent = json
+  send('plot', { plot: json })
+}
+
+// Tells the Bloxity menu who else is in this room: the roster present at the first state sync is "already
+// there" (playerInRoom), later arrivals "joined" (playerJoined) -- the join toasts and the room's player list.
+function reportRoster(room) {
+  try {
+    let synced = false
+    room.onStateChange.once(() => (synced = true))
+    Callbacks.get(room).onAdd('players', (player, sessionId) => {
+      if (sessionId !== room.sessionId) reportPlayer(player.username, !synced)
+    })
+  } catch (err) {
+    console.warn('[net] could not watch the roster', err)
+  }
+}
 
 // --- Connection --------------------------------------------------------------
-let sentPfp = '' // the profile picture the server shows the others (roster `pfp`)
 function attach(room) {
   net.room = room
   net.connected = true
+  plotSent = ''
+  reportRoster(room)
   for (const [type, fn] of handlers) room.onMessage(type, fn)
+  if (presence.plot) sendPlot(presence.plot)
   room.onMessage('progress', (doc) => {
     net.hydrated = true
     lastSaved = ''
@@ -236,11 +260,16 @@ function attach(room) {
     net.hydrated = false
     console.warn('[net] server could not read the saved progress; saving is off for this session')
   })
+  room.onStateChange(() => {
+    const me = room.state?.players?.get?.(room.sessionId)
+    if (me && me.base !== net.base) net.base = me.base
+  })
   room.onLeave(() => {
     if (net.room !== room) return
     net.room = null
     net.connected = false
     net.hydrated = false
+    net.base = -1
     updateRoom('')
     // Resolve again rather than rejoin the old endpoint: that is how players move off a pod being
     // replaced. Keep trying; play is unaffected meanwhile.
@@ -277,18 +306,17 @@ async function joinAnyRoom(options) {
 
 let connecting = false
 let retryIn = NET.retry // s: backoff while the matchmaker / server can't be reached
+let wantBase = MY_PLOT // the plot asked for: the default one first, then the one this tab built its pieces on
 async function connect() {
   if (!hasServer() || connecting || net.connected) return
   connecting = true
   try {
     const id = identity()
     sentId = id.userId
-    sentPfp = getPfp()
-    raceSent = false
     sentAvatar = avatarJson()
     loadoutKey = JSON.stringify(presence.loadout)
     poseKey = ''
-    const options = { ...id, pfp: sentPfp, avatar: sentAvatar, pose: presence.pose, loadout: presence.loadout }
+    const options = { ...id, pfp: getPfp(), avatar: sentAvatar, pose: presence.pose, loadout: presence.loadout, base: wantBase }
     const { room, relay } = (await joinLaunchRoom(options)) ?? (await joinAnyRoom(options))
     retryIn = NET.retry
     attach(room)
@@ -303,6 +331,24 @@ async function connect() {
   }
 }
 
+// Resolves with the plot the server gave this player (PLOTS index), or -1 when no room answered
+// within `ms` (the game then starts offline on the default plot and keeps trying to connect).
+export function waitForBase(ms) {
+  return new Promise((resolve) => {
+    const t0 = performance.now()
+    const tick = () => {
+      if (net.base >= 0) return resolve(net.base)
+      if (!hasServer() || performance.now() - t0 > ms) return resolve(-1)
+      setTimeout(tick, 60)
+    }
+    tick()
+  })
+}
+// The plot this tab builds its own treadmill / pool on: asked for on every (re)join.
+export function setWantedBase(i) {
+  wantBase = i
+}
+
 // Playtime ticks once a second while the tab is visible; a changed snapshot is sent at most every
 // NET.saveEvery s.
 setInterval(() => {
@@ -311,25 +357,27 @@ setInterval(() => {
   if (performance.now() - savedAt >= NET.saveEvery * 1000) saveNow()
 }, 1000)
 
-// hud: main.js's createHud() (its trophies and gems are saved). stores: every window whose state is
-// saved, each { snapshot(), hydrate(doc) }.
-export function initNet(opts = {}) {
-  hud = opts.hud ?? null
-  stores = opts.stores ?? []
+// Starts connecting once Bloxity auth has settled; later auth changes are sign-in / sign-out.
+export function initNet() {
   if (!hasServer()) return console.info('[net] no server configured; progress is not being saved')
-  // The first ready call connects; later ones are sign-in / sign-out.
   subscribeAuth((s) => {
     if (!s.ready) return
     if (!net.connected) return void connect()
     const id = identity()
-    sentPfp = getPfp()
     syncAvatar() // signed in / out: the others see the new look
-    if (id.userId === sentId) return send('identify', { username: id.username, pfp: sentPfp })
+    if (id.userId === sentId) return send('identify', { username: id.username, pfp: getPfp() })
     saveNow() // under the old id, before switching
     net.hydrated = false
     sentId = id.userId
-    send('identify', { ...id, pfp: sentPfp })
+    send('identify', { ...id, pfp: getPfp() })
   })
   window.addEventListener('pagehide', saveNow)
   document.addEventListener('visibilitychange', () => document.hidden && saveNow())
+}
+
+// stores: everything that is saved, each { snapshot(), hydrate(doc) }. A save that arrived before
+// they existed is applied now.
+export function setStores(list) {
+  stores = list
+  if (pendingDoc) hydrate(pendingDoc)
 }

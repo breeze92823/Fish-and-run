@@ -1,64 +1,65 @@
-import { ACESFilmicToneMapping, Clock, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
-import { BOATS, CAMERA, DAILY, graphicsPreset, PHYSICS, RACE, RENDER, TRAILS } from './config.js'
+import { ACESFilmicToneMapping, Clock, NeutralToneMapping, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
+import { CAMERA, ECONOMY, FISH, graphicsPreset, MY_PLOT, NET, OFFER_ROTATE, OFFERS, RENDER, SPEED_BOOST, TIME_OF_DAY } from './config.js'
 import * as bloxity from './bloxity.js'
-import { initNet, net, onNetMessage, sendLoadout, sendPose, syncAvatar } from './net.js'
-import { inputState, install as installInput, onKey } from './input.js'
+import { install as installInput, onKey } from './input.js'
+import { installAudio } from './audio/index.js'
+import { closeSellFish, openSellFish } from './sellFish.js'
+import { closeIndex, openIndex, toggleIndex } from './hud/indexWindow.js'
+import { closeRods, openRods } from './rods/window.js'
+import { equippedRodId, onRodsChange } from './rods/state.js'
+import { rodThumb } from './rods/thumbs.js'
+import { closeTrails, openTrails } from './trails/window.js'
+import { equippedTrail, equippedTrailId, hydrateTrails, onTrailsChange, snapshotTrails } from './trails/state.js'
+import { boostLeft, formatSpeed, onSpeedChange, speedStat, startBoost } from './speed.js'
+import { createTreadmill } from './hub/treadmill.js'
+import { createBase } from './hub/base.js'
+import { createFishPlacer } from './hub/placeFish.js'
+import { createTrail } from './hub/trail.js'
+import { createHud } from './hud/hud.js'
+import { getActiveFishIds, getMoney, onActiveFishChanged, totalEarn } from './activeFish.js'
+import { createOfferView } from './offerModel.js'
+import { addFish, grant, inventory, spend, subscribe as onInventory } from './inventory.js'
+import { isEquipped } from './activeFish.js'
+import { fishThumb } from './fishThumbs.js'
+import { createFx } from './fx.js'
+import { createLaneHud } from './hud/laneHud.js'
+import { buildLane } from './lane/index.js'
+import { closeFishPanel, toggleFishPanel } from './hud/fishPanel.js'
 import { installTouch } from './touch.js'
-import { createHud } from './hud.js'
-import { anyWindowOpen, closeTopWindow, setWindowReserved } from './uiWindow.js'
-import { installAudio, setVolume, sfx, toggleMuted, updateAudio } from './audio/index.js'
-import { createRebirth } from './rebirth.js'
-import { createPets, petsState } from './pets.js'
-import { createEngine, ENGINES, engineState } from './engine.js'
-import { createPartner, partnerState } from './partner.js'
-import { createGifts, giftsState } from './gifts.js'
-import { createSpin } from './spin.js'
-import { createDaily } from './daily.js'
-import { createTrails, trailById, trailState } from './trails.js'
-import { createTrail } from './trail.js'
-import { rebirthState } from './rebirth.js'
 import { createPlayerBody, interpolate as interpolatePlayer, player, resetPlayer, respawn } from './player.js'
 import { setCameraSensitivity, syncYawToPlayer, update as updateCamera } from './camera.js'
-import { getMode, onModeChanged, toggleMode } from './modes.js'
+import { onModeChanged, toggleMode } from './modes.js'
 import { bodyCount, initPhysics, stepPhysics } from './physics.js'
 import { createLighting } from './lighting.js'
 import { createWorld } from './world.js'
-import { createEnvironment } from './environment.js'
-import { createWorlds, worldState } from './worlds.js'
-import { createPostFx } from './postfx.js'
-import { setParticleDensity, updateParticles } from './particles.js'
-import { setNeonBloom } from './propkit.js'
-import { createLobby } from './lobby.js'
-import { createPlaza } from './plaza.js'
-import { createShops } from './shops.js'
-import { createHub } from './hub.js'
-import { createInteract } from './interact.js'
-import { createEggs } from './eggs.js'
-import { createBoat } from './boat.js'
-import { buildBoat, disposeBoat } from './boatModels.js'
-import { boatState, createBoats } from './boats.js'
-import { createRace } from './race.js'
-import { createTraining } from './training.js'
-import { createBoostPanel } from './boostPanel.js'
-import { createCompanions, updateCompanionMaterials } from './companions.js'
+import { buildHub } from './hub/index.js'
+import { fishTime, formatEarn } from './hub/fish.js'
+import { initNet, net, onLeaderboard, onNetMessage, roster, sendLoadout, sendPlot, sendPose, setStores, setWantedBase, syncAvatar, waitForBase } from './net.js'
 import { createRemotePlayers } from './remotePlayers.js'
+import { hydrateFish, snapshotFish } from './activeFish.js'
+import { hydrateIndex, snapshotIndex } from './fishIndex.js'
+import { hydrateRods, snapshotRods } from './rods/state.js'
+import { hydrateSpeed, snapshotSpeed } from './speed.js'
+import { formatMoney } from './hud/hud.js'
+import { setParticleDensity, updateParticles } from './particles.js'
+import { equipTool } from './tools.js'
+import { createPostFx } from './postfx.js'
+import { setNeonBloom } from './propkit.js'
 import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
-import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
+import { applyProportions } from './avatar/loader.js'
+import { buildLook } from './avatar/look.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
 
-// Boot order: Bloxity SDK -> renderer -> Rapier (async
-// wasm) -> world, lobby + plaza + shop props, lighting, player body + boat -> avatar (async, swaps in
-// when ready) -> loop. The SDK is optional at every step.
+// Boot order: Bloxity SDK -> renderer -> Rapier (async wasm) -> ground + sky + lighting,
+// player body -> avatar (async, swaps in when ready) -> loop. The SDK is optional at every step.
 let lighting = null
 let renderer = null
 let postfx = null
-let trailsScene = null // made once the boat exists; Esc leaves it first
 
 // Settings come from the portal's settings menu (or their defaults offline).
 function applySetting(key, value) {
   if (key === 'camera_sensitivity') setCameraSensitivity(value)
   else if (key === 'fullscreen') bloxity.requestFullscreen(value)
-  else if (key === 'sound_volume') setVolume(value)
   else if (key === 'graphics_quality' && renderer) {
     const next = graphicsPreset(value)
     renderer.shadowMap.enabled = next.shadows
@@ -72,19 +73,38 @@ function applySetting(key, value) {
 }
 bloxity.onSetting(applySetting)
 bloxity.init()
-installAudio() // starts on the first tap / key (browser autoplay rules)
 
 // --- Renderer ---------------------------------------------------------------
 const preset = graphicsPreset(bloxity.settings.graphics_quality)
 renderer = new WebGLRenderer({ antialias: preset.antialias, powerPreference: 'high-performance' })
 renderer.outputColorSpace = SRGBColorSpace
-renderer.toneMapping = ACESFilmicToneMapping
+renderer.toneMapping = RENDER.toneMapping === 'neutral' ? NeutralToneMapping : ACESFilmicToneMapping
 renderer.toneMappingExposure = RENDER.exposure
 renderer.shadowMap.enabled = preset.shadows
 renderer.shadowMap.type = PCFSoftShadowMap
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, preset.dpr))
 document.body.appendChild(renderer.domElement)
-installInput(() => trailsScene?.close() || closeTopWindow() || bloxity.showMenu(), renderer.domElement) // Esc closes the Trails scene / an open window first
+installInput(() => closeSellFish() || closeRods() || closeTrails() || closeIndex() || closeFishPanel() || bloxity.showMenu(), renderer.domElement) // Esc closes an open window, else opens the portal menu
+installAudio() // the context starts on the first gesture
+// HUD: buttons report through onAction(name). 'fish' = the right-edge Fish tile.
+const hud = createHud({
+  onAction(name, value) {
+    if (name === 'fish') toggleFishPanel()
+    else if (name === 'index') toggleIndex()
+    else if (name === 'slowMode') {
+      player.speedScale = value ? ECONOMY.slowModeSpeed : 1
+      hud.setSlowMode(value)
+    } else if (name === 'equip') {
+      equip(value)
+    } else if (name === 'speed') buySpeedBoost()
+    else if (name === 'offer') buyOffer()
+    else if (name === 'shop' || name === 'gems') hud.toast('Coming soon!')
+  },
+})
+onNetMessage('schedule', (sc) => hud.setSchedule(sc)) // server clock for the Update / Next event countdowns
+hud.setGems(inventory.gems)
+onInventory(() => hud.setGems(inventory.gems))
+hud.setEquipped(1)
 
 const scene = new Scene()
 const camera = new PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
@@ -102,44 +122,226 @@ resize()
 
 for (const key of Object.keys(bloxity.settings)) applySetting(key, bloxity.settings[key])
 
-// --- Physics + world ---------------------------------------------------------
+// --- Physics + ground + sky --------------------------------------------------
 bloxity.loadingStep('Starting physics')
 await initPhysics()
 
 lighting = createLighting(scene, renderer, preset)
-const world = createWorld(scene) // the sea and clouds, shared by every world
-const homeFrom = scene.children.length
-// The scenery of each world (beach / City): one Group each, built when first shown (worlds.js).
-const env = createEnvironment(scene)
-const lobby = createLobby(scene)
-const plaza = createPlaza(scene)
-const shops = createShops(scene)
-// Everything on the start island; a race slides it away behind the boat (race.js / raceScenery.js).
-const home = scene.children.slice(homeFrom)
+const world = createWorld(scene) // clouds
+// Multiplayer + saves (net.js): join a room and wait (at most NET.joinWait s) for the plot the
+// server gives us, so the hub is built with our pool and treadmill on it. Offline (no server, or
+// none answered) we take MY_PLOT and the other plots stay empty.
+initNet()
+bloxity.loadingStep('Finding a server')
+const base = await waitForBase(NET.joinWait * 1000)
+const myPlot = base >= 0 ? base : MY_PLOT
+setWantedBase(myPlot)
+const hub = buildHub(scene, { myName: bloxity.displayName(), myPlot })
+hub.onPad((id, def) => {
+  if (id === 'sell') openSellFish()
+  else if (id === 'rods') openRods()
+  else if (id === 'trails') openTrails()
+  else hud.toast(`${def.label} shop coming soon!`)
+})
 createPlayerBody()
 syncYawToPlayer()
+const fx = createFx(scene)
 
 // --- Player avatar ----------------------------------------------------------
 // The Bloxity base rig (player.glb; procedural fallback if it fails), dressed
 // with the signed-in player's equipped cosmetics and body proportions. It
-// rebuilds on customizer edits and sign-in/out. The avatar stands in the
-// player's boat (boat.js), which carries it around the lobby.
+// rebuilds on customizer edits and sign-in/out.
 const playerGroup = new Group()
 scene.add(playerGroup)
-const boat = createBoat()
-playerGroup.add(boat.root)
-const trail = createTrail(scene, boat.root) // the equipped trail, streaming off the stern
 let avatar = null
 let animator = null
 let generation = 0
 let avatarReady = false
 
 function setAvatar(next) {
-  if (avatar) boat.rider.remove(avatar)
+  if (avatar) playerGroup.remove(avatar)
   disposeAnimator(animator)
   avatar = next
-  boat.rider.add(avatar)
+  playerGroup.add(avatar)
+  animator = makeAnimator(avatar) // the rig is still in its bind pose here
+  equipTool(avatar, equippedSlot, hotbarSpecies(equippedSlot))
+}
+
+// Hotbar: 1 = fishing rod, 2 = bat, 3+ = fish caught in the lane and not yet put in
+// the plot (grouped by species + weight), held in the right hand.
+let equippedSlot = 1
+let hotbarFish = []
+function hotbarSpecies(slot) {
+  return slot >= 3 ? (hotbarFish[slot - 3]?.species ?? null) : null
+}
+function refreshHotbar() {
+  const groups = new Map()
+  for (const f of inventory.fish) {
+    if (!f.hotbar || isEquipped(f.uid)) continue
+    const key = `${f.species}|${f.weight}`
+    const g = groups.get(key)
+    if (g) g.count++
+    else groups.set(key, { species: f.species, weight: f.weight, count: 1 })
+  }
+  hotbarFish = [...groups.values()]
+  hud.setBackpackFish(hotbarFish.map((g) => ({ img: fishThumb(g.species), label: `${g.weight}Kg`, count: g.count })))
+  if (equippedSlot >= 3 && !hotbarFish[equippedSlot - 3]) equip(null)
+}
+function equip(slot) {
+  equippedSlot = slot
+  hud.setEquipped(slot)
+  if (!avatar) return
+  // Tools attach in the bind pose: rebuild the animator around a reset rig.
+  disposeAnimator(animator)
   animator = makeAnimator(avatar)
+  equipTool(avatar, slot, hotbarSpecies(slot))
+}
+
+// --- The run lane: zones, fishing, the guard, carrying fish home --------------------
+const laneHud = createLaneHud(hud.root, { onCast: () => lane.tryCast(), onStop: () => lane.reset(), onClick: () => lane.click() })
+const skyMoods = new Map()
+const lane = buildLane(scene, {
+  fx,
+  laneHud,
+  toast: (m) => hud.toast(m),
+  playerGroup,
+  canvas: renderer.domElement,
+  getAvatar: () => avatar,
+  getAnimator: () => animator,
+  getSlot: () => equippedSlot,
+  // Each zone's sky tint over the default daylight (cached so a zone keeps one mood object).
+  setSky(sky) {
+    if (!sky) return lighting.setMoods(TIME_OF_DAY)
+    if (!skyMoods.has(sky)) skyMoods.set(sky, { day: { ...TIME_OF_DAY.day, ...sky }, night: TIME_OF_DAY.night })
+    lighting.setMoods(skyMoods.get(sky))
+  },
+  // Home with a catch: it goes in the backpack and straight into your hands, ready to be put in
+  // your pond (click the water: hub/placeFish.js).
+  onDeliver({ species, weight, earn }) {
+    inventory.caught++
+    addFish(species, weight, earn).hotbar = true
+    refreshHotbar()
+    const i = hotbarFish.findIndex((g) => g.species === species && g.weight === weight)
+    if (i >= 0) equip(3 + i)
+    if (inventory.caught <= 3) setTimeout(() => hud.toast('Click the water in your base to put your fish in!'), 1600)
+  },
+})
+// A new rod: swap the model in hand (if the rod slot is held) and the hotbar picture.
+const syncRodIcon = () => hud.setSlotImage(1, rodThumb(equippedRodId()))
+onRodsChange((reason) => {
+  if (reason !== 'equip') return
+  if (equippedSlot === 1) equip(1)
+  syncRodIcon()
+})
+syncRodIcon()
+onInventory(refreshHotbar)
+onActiveFishChanged(refreshHotbar)
+refreshHotbar()
+// The speed stat (trained on the treadmill x the trail) sets run speed; the HUD shows it.
+let shownStat = 0
+function syncSpeed() {
+  const stat = speedStat()
+  player.speedStat = stat
+  hud.setSpeed(formatSpeed(stat), stat > shownStat && shownStat > 0)
+  shownStat = stat
+}
+onSpeedChange(syncSpeed)
+syncSpeed()
+hud.setSpeedBoost({ price: SPEED_BOOST.price })
+let shownBoost = -1
+function tickBoost() {
+  const left = boostLeft()
+  if (left !== shownBoost) hud.setSpeedBoost({ price: SPEED_BOOST.price, secondsLeft: (shownBoost = left) })
+}
+const treadmill = createTreadmill({ scene, plots: hub.plots, laneHud, toast: (m) => hud.toast(m) })
+const myBase = createBase({ plots: hub.plots, laneHud, toast: (m) => hud.toast(m), fx })
+// The backpack fish in your hand (hotbar 3+), as a uid, for putting it in the pond.
+function heldFishUid() {
+  const g = equippedSlot >= 3 ? hotbarFish[equippedSlot - 3] : null
+  if (!g) return null
+  return inventory.fish.find((f) => f.hotbar && !isEquipped(f.uid) && f.species === g.species && f.weight === g.weight)?.uid ?? null
+}
+const placer = createFishPlacer({ scene, camera, canvas: renderer.domElement, plots: hub.plots, getHeld: heldFishUid, toast: (m) => hud.toast(m), fx })
+
+// --- Saves (net.js): every part of the progress, each { snapshot(), hydrate(doc) } ---------------
+// Order matters on load: the backpack before the Index (its fish unlock their species).
+setStores([
+  { snapshot: myBase.snapshot, hydrate: myBase.hydrate }, // the base level first: it sets the pond's slots
+  { snapshot: snapshotFish, hydrate: hydrateFish }, // money, gems, lifetime counters, income, slots, fish
+  { snapshot: snapshotRods, hydrate: hydrateRods },
+  { snapshot: snapshotTrails, hydrate: hydrateTrails },
+  { snapshot: snapshotSpeed, hydrate: hydrateSpeed },
+  { snapshot: snapshotIndex, hydrate: hydrateIndex },
+  { snapshot: treadmill.snapshot, hydrate: treadmill.hydrate },
+  // Offline earnings: the server works out income x offline rate x time away (capped at a day).
+  {
+    snapshot: () => ({}),
+    hydrate(doc) {
+      if (!(doc.offline > 0)) return
+      grant(doc.offline)
+      setTimeout(() => hud.toast(`Welcome back! Your fish earned ${formatMoney(doc.offline)} while you were away`), 1500)
+    },
+  },
+])
+
+// --- Multiplayer: the other players, their plots and the leaderboard ----------------------------
+const remotes = createRemotePlayers(scene)
+// This player as the others draw them: the pose (each frame, net.js throttles), and what is in hand.
+function sendPresence() {
+  const v = player.velocity
+  sendPose({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.facing, speed: Math.hypot(v.x, v.z), vy: v.y, grounded: player.grounded, knocked: lane.mode === 'thrown' })
+  const slot = equippedSlot ?? 0
+  sendLoadout({ rod: equippedRodId(), trail: equippedTrailId() ?? '', slot: Math.min(3, slot), item: slot >= 3 ? hotbarSpecies(slot) ?? '' : '', hold: lane.carrying ?? '' })
+}
+// Twice a second: our plot for the others (the pool's fish, the treadmill tier), and the other
+// players' plots from the roster (an unowned plot is left empty).
+const plotCache = new Map() // plot JSON -> parsed
+setInterval(() => {
+  sendPlot(JSON.stringify({ f: getActiveFishIds().slice(0, NET.plotFish), t: treadmill.look(), b: myBase.level() }))
+  const players = roster()
+  if (!players) return
+  const owners = new Map()
+  players.forEach((p, id) => {
+    if (id === net.sessionId || p.base < 0 || p.base === myPlot) return
+    let snap = plotCache.get(p.plot)
+    if (!snap) {
+      try {
+        snap = p.plot ? JSON.parse(p.plot) : {}
+      } catch {
+        snap = {}
+      }
+      if (plotCache.size > 64) plotCache.clear()
+      plotCache.set(p.plot, snap)
+    }
+    owners.set(p.base, { name: p.username || 'Player', fish: Array.isArray(snap.f) ? snap.f.slice(0, NET.plotFish) : [], treadmill: typeof snap.t === 'string' ? snap.t : 'stone', level: Number.isInteger(snap.b) ? snap.b : 1 })
+  })
+  hub.plots.plots.forEach((_, i) => i !== myPlot && hub.plots.setOwner(i, owners.get(i) ?? null))
+}, 500)
+// The MOST CASH/S board: the server's top earners (income $/s).
+onLeaderboard((lb) => {
+  const rows = lb.boards?.income
+  if (Array.isArray(rows)) hub.board.setRows(rows.slice(0, 8).map((r) => [String(r.name ?? 'Player'), `${formatEarn(+r.value || 0)}/s`]))
+})
+
+// The equipped trail: a ribbon streaming from the player's feet.
+let myTrail = null
+function syncTrail() {
+  const t = equippedTrail()
+  if (!t) {
+    if (myTrail) myTrail.mesh.visible = false
+    return
+  }
+  if (!myTrail) myTrail = createTrail(scene, t.colors)
+  else myTrail.setColors(t.colors)
+  myTrail.reset()
+  myTrail.mesh.visible = true
+}
+onTrailsChange(syncTrail)
+syncTrail()
+
+const respawnAll = () => {
+  lane.reset()
+  respawn()
 }
 
 setAvatar(buildDefaultCharacter()) // visible immediately; replaced once the rig loads
@@ -148,13 +350,14 @@ async function loadAvatar() {
   // The SDK fires twice per change (optimistic + confirmed); only the newest load may land.
   const mine = ++generation
   try {
-    const group = await loadBaseCharacter()
-    if (mine !== generation) return
-    const equipped = bloxity.authState.user ? bloxity.getEquippedAvatar() : null
-    await attachEquippedAccessories(group, equipped, { skinTextureUrl: bloxity.getSkinTextureUrl() })
-    if (mine !== generation) return
-    applyProportions(group, bloxity.authState.user ? bloxity.getProportions() : null)
+    const signed = !!bloxity.authState.user
+    const group = await buildLook(
+      { equipped: signed ? bloxity.getEquippedAvatar() : null, proportions: signed ? bloxity.getProportions() : null, skin: bloxity.getSkinTextureUrl() },
+      () => mine !== generation,
+    )
+    if (!group || mine !== generation) return
     setAvatar(group)
+    syncAvatar() // the others see the new look
   } finally {
     if (mine === generation) avatarReady = true
   }
@@ -166,309 +369,108 @@ bloxity.subscribeAuth((s) => {
   if (now !== signedIn) {
     signedIn = now
     loadAvatar() // also runs once at start to swap in the real rig
+    hub.setMyName(bloxity.displayName())
   }
 })
-bloxity.onAvatarChanged(() => {
-  loadAvatar()
-  syncAvatar() // the others see the new look too (net.js presence)
-})
-bloxity.onProportionsChanged(() => {
-  applyProportions(avatar, bloxity.getProportions())
-  syncAvatar()
-})
-bloxity.onRespawnRequest(() => respawnOrLeave())
+bloxity.onAvatarChanged(loadAvatar)
+bloxity.onProportionsChanged(() => !avatar?.isCustomCharacter && applyProportions(avatar, bloxity.getProportions()))
+bloxity.onRespawnRequest(respawnAll)
 
 // --- Modes + keys --------------------------------------------------------------
 onModeChanged((mode) => {
   playerGroup.visible = mode !== 'player' // first person: you are the camera
 })
-
-function toggleDay() {
-  lighting.toggleDayNight()
-  sfx.dayNight()
-}
-
 onKey('KeyV', toggleMode)
-onKey('KeyN', toggleDay)
-onKey('KeyM', toggleMuted) // sound on/off (touch: the portal's sound_volume setting)
-// Respawning mid-race leaves the race instead (race.leave puts the player back at the spawn).
-const respawnOrLeave = () => (race?.isRacing() ? race.leave() : respawn())
-onKey('KeyR', respawnOrLeave)
-installTouch({ mode: toggleMode, day: toggleDay, respawn: respawnOrLeave })
-// Lightning is one counter: the rebirth energy, shown on the HUD's bolt pill and read as race speed.
-let hud = null // made below; the rebirth window reports its energy from the start
-const rebirthWindow = createRebirth({ onChange: (st) => hud?.setStat('wins', Math.floor(st.energy)) })
-onKey('KeyB', rebirthWindow.toggle)
-const petsWindow = createPets()
-onKey('KeyI', petsWindow.toggle) // never P: on CrazyGames P opens Boxity's pause menu
-hud = createHud({
-  claim: () => giftsWindow.open(),
-  spin: () => spinWindow.open(),
-  daily: () => dailyWindow.open(),
-  rebirth: rebirthWindow.open,
-  pets: petsWindow.open,
-  engine: () => engineWindow.open(),
-  boats: () => boatsWindow.open(),
-  partner: () => partnerWindow.open(),
-  trail: () => race.isRacing() || trailsScene.open(), // the Trails scene would park the boat mid-race
-  autoRace: (on) => {
-    autoRace = on
-    if (on) race.start()
-  },
-  autoTrain: (on) => training.setAuto(on),
-  boosts: () => boostPanel.open(),
-})
-// Boxity's toolbar + chat feed own the top-left corner: the HUD keeps clear of them, and the
-// popup windows of the toolbar.
-bloxity.onReservedAreas((areas) => {
-  hud.setReserved(areas)
-  setWindowReserved(areas)
-})
-// Where every boost comes from (the HUD's boost circles).
-const boostPanel = createBoostPanel()
-hud.setStat('wins', Math.floor(rebirthState.energy))
-// The player's own head on the distance bar and podium: their Bloxity profile picture.
-bloxity.subscribeAuth(() => hud.setPfp(bloxity.getPfp()))
+onKey('KeyN', () => lighting.toggleDayNight())
+onKey('KeyR', respawnAll)
+onKey('KeyE', () => myBase.interact() || treadmill.interact() || lane.tryCast())
+installTouch({ mode: toggleMode, day: () => lighting.toggleDayNight(), respawn: respawnAll })
 
-// Engines are bought with Wins: the HUD's trophy total.
-const engineWindow = createEngine({
-  wins: { get: () => hud.getStat('trophies'), set: (n) => hud.setStat('trophies', n) },
-})
-// Boats are bought with Wins (the HUD's trophy counter); equipping one swaps the hull the player rides.
-const boatsWindow = createBoats({
-  wallet: { wins: () => hud.getStat('trophies'), spend: (n) => hud.setStat('trophies', hud.getStat('trophies') - n) },
-  onEquip: (id) => disposeBoat(boat.setHull(buildBoat(id))),
-})
-onKey('KeyO', boatsWindow.toggle)
-// Every partner is bought with Wins (the HUD's trophy counter); none is free.
-const partnerWindow = createPartner({
-  wins: { get: () => hud.getStat('trophies'), set: (n) => hud.setStat('trophies', n) },
-})
-onKey('KeyT', partnerWindow.toggle)
-// Online Gifts (HUD CLAIM! pill): lightning goes to the energy (= the HUD bolts),
-// trophies the HUD total, pets the Pets window (refused when storage is full).
-const giftsWindow = createGifts({
-  onReward(g) {
-    if (g.type === 'pet') return petsWindow.addPet(g.id)
-    if (g.type === 'bolt') rebirthWindow.addEnergy(g.n)
-    else if (g.type === 'trophy') hud.setStat('trophies', hud.getStat('trophies') + g.n)
-  },
-  onReadyCount: (n) => hud.setClaimCount(n),
-})
-onKey('KeyG', giftsWindow.toggle)
-// Spin wheel (HUD wheel button / K): the server rolls each spin; Wins go to the HUD total, potions
-// are counted with the gift potions, the HUGE pet joins the Pets window.
-const spinWindow = createSpin({
-  onReward(w) {
-    if (w.type === 'pet') return petsWindow.addPet(w.pet)
-    if (w.type === 'trophy') hud.setStat('trophies', hud.getStat('trophies') + w.n)
-    else if (w.type === 'potion') giftsState.potions[w.potion] = (giftsState.potions[w.potion] ?? 0) + 1
-  },
-  onCount: (n) => hud.setSpinCount(n),
-})
-onKey('KeyK', spinWindow.toggle)
-// Daily Reward (HUD calendar): a 7-day calendar the server keeps on its UTC clock. Wins go to the
-// HUD total, the pet to the Pets window, Day 7's Axolotl Egg hatches for free (eggs, made below).
-const dailyWindow = createDaily({
-  onReward(r) {
-    if (r.type === 'trophy') hud.setStat('trophies', hud.getStat('trophies') + r.n)
-    else if (r.type === 'pet') petsWindow.addPet(r.id)
-    else if (r.type === 'egg') eggs.hatchFree(DAILY.egg, r.n)
-  },
-  onReadyCount: (n) => hud.setDailyReady(n),
-  canAutoOpen: () => !race.isRacing() && !trailsScene.isOpen() && !eggs.hatching,
-})
-// Trails scene: the HUD folds down, the world pauses and the boat is shown off
-// at sea (stage() in the loop); tapping a trail previews it on the boat. Trails are bought with Wins.
-trailsScene = createTrails({
-  wallet: { wins: () => hud.getStat('wins'), spend: (n) => rebirthWindow.addEnergy(-n) },
-  rebirths: () => rebirthState.rebirths,
-  onPreview: (t) => trail.set(t),
-  onOpen: () => {
-    closeTopWindow()
-    hud.setScene(true)
-    boat.rider.visible = false // the reference shows the bare boat
-  },
-  onClose: () => {
-    hud.setScene(false)
-    boat.rider.visible = true
-    playerGroup.visible = getMode() !== 'player'
-    inputState.look.dx = inputState.look.dy = 0 // nothing the scene swallowed may turn the camera
-  },
-})
-trail.set(trailById(trailState.equipped))
-onKey('KeyL', () => race.isRacing() || trailsScene.toggle())
-
-// The race: through the START gate (or AUTO RACE) the boat drives itself down the lane.
-let autoRace = false
-const race = createRace({
-  scene,
-  hud,
-  lobby,
-  world,
-  home,
-  onEnd() {
-    boat.rider.visible = true
-    playerGroup.visible = getMode() !== 'player'
-    // AUTO RACE goes again once the result has been up for a moment.
-    setTimeout(() => autoRace && !trailsScene.isOpen() && race.start(), RACE.resultSeconds * 1000)
-  },
-})
-
-// Training: the plaza's treadmill lanes (and AUTO TRAIN) pay lightning.
-const training = createTraining({ hud, plaza, onGain: (n) => rebirthWindow.addEnergy(n) })
-
-// Worlds: the plaza's VIP portal goes to the City (10 rebirths + 200 Power) and back. Same island,
-// shops and progress; the scenery, sea and sky change. A race or the Trails scene ends first.
-const worlds = createWorlds({
-  hud,
-  plaza,
-  env,
-  world,
-  lighting,
-  stats: () => ({ rebirths: rebirthState.rebirths, power: rebirthState.energy }),
-  leave() {
-    if (race.isRacing()) race.leave()
-    trailsScene.close()
-  },
-  respawn,
-})
-
-// Hub pads in front of the Eggs stall, Boats stall, Engine Upgrade machine and hero statues open their windows.
-const hubWindows = { pets: petsWindow.open, boats: boatsWindow.open, engine: engineWindow.open, partner: partnerWindow.open }
-const hubFrom = scene.children.length
-const hub = createHub(scene, hubWindows)
-home.push(...scene.children.slice(hubFrom)) // the pads are on the island too
-// The egg window (E at a stall egg): odds, Open 1 / 3, Auto, the hatch overlay; it takes E / R / T while open.
-const eggs = createEggs({ hud, pets: petsWindow, spots: shops.spots.eggs })
-// E prompts on the shop objects: open an egg, buy/equip boats, engines and partners in the world.
-const interact = createInteract({ hud, lobby, shops, eggs, boats: boatsWindow, engine: engineWindow, partner: partnerWindow, windows: hubWindows })
-// E interacts with the object in front of you; with none in range it toggles the Engine window as before.
-onKey('KeyE', () => interact.trigger() || engineWindow.toggle())
-
-// --- Presence: gear in the world, this player for the others, the others for this player ---
-// (made after the start island's objects, so none of this slides away with it during a race)
-// The equipped pets hover round the boat, the partner stands behind the rider and the engines take
-// the equipped engine's colours x the boat's engine count. Polled: any window may change the gear.
-const companions = createCompanions(scene, boat.seat, { shadows: true })
-const engineLooks = new Map(ENGINES.map((e) => [e.id, e.look]))
-const boatEngines = new Map(BOATS.list.map((b) => [b.id, b.engines]))
-let gearKey = ''
-let enginesKey = ''
-function syncGear() {
-  const gear = {
-    boat: boatState.equipped ?? '',
-    engine: engineState.equipped ?? '',
-    trail: trailState.equipped ?? '',
-    partner: partnerState.equipped ?? '',
-    pets: petsState.pets.filter((pt) => pt.equipped).map((pt) => ({ kind: pt.kind, tier: pt.tier })),
-    world: worldState.current, // the others only draw players in their own world
-  }
-  const key = JSON.stringify(gear)
-  if (key === gearKey) return
-  gearKey = key
-  const ek = `${gear.boat}|${gear.engine}`
-  if (ek !== enginesKey) {
-    enginesKey = ek
-    boat.setEngines(engineLooks.get(gear.engine) ?? null, boatEngines.get(gear.boat) ?? 1)
-  }
-  companions.setPets(gear.pets)
-  companions.setPartner(gear.partner)
-  sendLoadout(gear)
+// --- Your plot + economy ------------------------------------------------------
+// activeFish.js owns money and the active fish; the plot swims them and the HUD
+// shows the rates (offline earnings are ECONOMY.offlineRate of the online rate).
+function syncActiveFish() {
+  const earn = totalEarn()
+  hub.setMyFish(getActiveFishIds(), earn)
+  hud.setOfflinePerDay(earn * 86400 * ECONOMY.offlineRate)
 }
-syncGear()
-setInterval(syncGear, 250)
-// Everyone else in the room, with their boats, engines, trails, pets and partners (remotePlayers.js).
-const remotes = createRemotePlayers(scene)
-const round = (n) => Math.round(n * 100) / 100
+onActiveFishChanged(syncActiveFish)
+syncActiveFish()
+hud.setMoney(getMoney())
 
-// Progress lives only on the server (net.js): it loads each window's part of the save into it
-// and saves the HUD's trophies + gems and every window's snapshot. Nothing is kept in the browser.
-initNet({ hud, stores: [rebirthWindow, petsWindow, engineWindow, boatsWindow, partnerWindow, giftsWindow, trailsScene, race, eggs, worlds] })
-
-// The plaza's leaderboards: the server's top lists + this player's ranks (on join, then every
-// minute), and this player's own live values on each board's bottom line.
-onNetMessage('leaderboard', (data) => plaza.setLeaderboard(data))
-setInterval(() => {
-  plaza.setMine({ rebirths: rebirthState.rebirths, trophies: hud.getStat('trophies'), energy: Math.floor(rebirthState.energy), playtime: net.playtime })
-}, 2000)
+// The rotating best-fish offer (top-right card) and its 3D model.
+const offerView = hud.offerBox() ? createOfferView(hud.offerBox()) : null
+let offerIndex = -1
+function updateOffer(elapsed) {
+  const i = Math.floor(elapsed / OFFER_ROTATE) % OFFERS.length
+  if (i !== offerIndex) {
+    offerIndex = i
+    const o = OFFERS[i]
+    hud.setOffer({ percent: o.percent, name: FISH[o.fish].name, price: o.price })
+    offerView?.setFish(o.fish)
+  }
+  offerView?.update(elapsed)
+}
+// Buy the current offer with cash: the fish goes straight into your hands, like a delivered catch.
+function buyOffer() {
+  const o = OFFERS[Math.max(0, offerIndex)]
+  if (!spend(o.price)) return hud.toast('Not enough cash!')
+  inventory.caught++
+  const earn = Math.max(1, Math.round(FISH[o.fish].earn * (o.earnMult ?? 1)))
+  addFish(o.fish, 1, earn).hotbar = true
+  refreshHotbar()
+  const i = hotbarFish.findIndex((g) => g.species === o.fish)
+  if (i >= 0) equip(3 + i)
+  hud.toast(`Bought ${FISH[o.fish].name}!`)
+}
+function buySpeedBoost() {
+  if (!spend(SPEED_BOOST.price)) return hud.toast('Not enough cash!')
+  startBoost(SPEED_BOOST.duration)
+  hud.toast(`x${SPEED_BOOST.mult} Speed for ${Math.round(SPEED_BOOST.duration / 60)} min!`)
+}
 
 // --- Loop -------------------------------------------------------------------
 const clock = new Clock()
 let shownLoading = true
 let readySince = 0
 
-renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.1) // clamp huge frames (tab switch, breakpoint)
-  const elapsed = clock.elapsedTime
+let elapsed = 0
+// One frame. `fixedDt` (dev only, __game.advance) steps the game without real time passing.
+function frame(fixedDt) {
+  const dt = fixedDt ?? Math.min(clock.getDelta(), 0.1) // clamp huge frames (tab switch, breakpoint)
+  elapsed += dt
+  tickBoost()
 
-  const staging = trailsScene.isOpen() // the Trails scene pauses the world and parks the boat at sea
-  if (!staging) stepPhysics(dt) // runs the player controller + world at the fixed rate, interpolates bodies
+  stepPhysics(dt) // runs the player controller + world at the fixed rate, interpolates bodies
   interpolatePlayer()
-  if (!staging && !race.isRacing() && race.atGate(player.position)) race.start()
-  const racing = race.isRacing()
-  const scroll = race.update(dt) // m/s the world slides past a cruising boat (0 when not racing)
 
   const p = player.renderPosition
   playerGroup.position.set(p.x, p.y, p.z)
   playerGroup.rotation.y = player.facing
-  const speed = Math.hypot(player.velocity.x, player.velocity.z)
-  if (staging) {
-    trailsScene.stage(camera, playerGroup)
-    playerGroup.visible = true
-    boat.update(dt, TRAILS.showcase.speed, 0, elapsed)
-    animator?.update(dt, { grounded: true, speed: 0, verticalVelocity: 0, turn: 0 })
-  } else if (racing) {
-    playerGroup.visible = true // the boat stays in view; in first person only the rider is hidden
-    boat.rider.visible = getMode() !== 'player'
-    boat.update(dt, race.boatSpeed(), inputState.move.x, elapsed, race.tapBoost())
-    animator?.update(dt, { grounded: true, speed: 0, verticalVelocity: 0, turn: 0 })
-  } else if (getMode() === 'character') {
-    boat.update(dt, speed, inputState.move.x, elapsed)
-    // Riding: the avatar stands still in the boat (idle pose), only jumps animate.
-    animator?.update(dt, {
-      grounded: player.grounded,
-      speed: 0,
-      verticalVelocity: player.velocity.y,
-      turn: 0,
-    })
-  }
-
-  if (racing) race.camera(camera, dt)
-  else if (!staging) updateCamera(camera, dt)
-  // Engine, hull and beach ambience follow the boat and the camera.
-  updateAudio(dt, {
-    camera,
-    player: { x: player.position.x, y: player.position.y, z: player.position.z, vy: player.velocity.y, grounded: player.grounded },
-    speed: staging ? TRAILS.showcase.speed : racing ? race.boatSpeed() : speed,
-    top: racing ? race.topSpeed() : staging ? TRAILS.showcase.speed * 1.6 : PHYSICS.sprintSpeed,
-    boost: racing ? race.tapBoost() : 0,
-    moving: Math.min(1, Math.hypot(inputState.move.x, inputState.move.z)),
-    racing,
-    staging,
-    visible: true,
-    windowOpen: anyWindowOpen(),
-    night: lighting.isNight(),
+  animator?.update(dt, {
+    grounded: player.grounded,
+    speed: Math.hypot(player.velocity.x, player.velocity.z),
+    verticalVelocity: player.velocity.y,
+    turn: 0,
   })
-  if (!staging) training.update(dt, player.renderPosition, camera, racing)
-  hub.update(elapsed, staging || racing ? null : player.position)
-  worlds.update(dt, staging || racing ? null : player.position)
-  interact.update(camera, staging || racing ? null : player.renderPosition)
-  eggs.update(staging || racing ? null : player.renderPosition)
-  trail.update(dt, camera, staging ? TRAILS.showcase.speed : scroll)
-  companions.setVisible(playerGroup.visible)
-  companions.update(dt, elapsed, playerGroup.position.x, playerGroup.position.y, playerGroup.position.z, playerGroup.rotation.y)
-  updateCompanionMaterials(elapsed)
-  // This player for the others, in track coordinates (the real position, not the Trails showcase).
-  const track = race.trackScroll()
-  sendPose({ x: round(player.position.x), y: round(player.position.y), z: round(player.position.z - track), yaw: round(player.facing), speed: round(racing ? race.boatSpeed() : speed) })
-  remotes.update(dt, elapsed, player.renderPosition, track, scroll, camera)
-  hud.update()
+
+  updateCamera(camera, dt)
+  placer.update(dt)
   world.update(dt, elapsed)
+  fishTime.value = elapsed
+  hub.update(dt, elapsed, player.renderPosition)
+  treadmill.update(dt, player.position)
+  myBase.update(player.position)
+  lane.update(dt, elapsed)
+  remotes.update(dt, player.renderPosition)
+  sendPresence()
+  if (myTrail?.mesh.visible) myTrail.update(dt, p.x, p.y, p.z)
+  laneHud.update(dt)
+  fx.update(dt, renderer.domElement.height)
+  hud.setMoney(getMoney())
+  hud.update(dt)
+  updateOffer(elapsed)
   updateParticles(elapsed, renderer.domElement.height)
-  lobby.update(dt, elapsed)
-  plaza.update(dt, elapsed)
-  shops.update(dt, elapsed)
   lighting.update(dt, playerGroup.position)
   postfx.render()
 
@@ -480,7 +482,9 @@ renderer.setAnimationLoop(() => {
       bloxity.notifyFirstFrame()
     }
   }
-})
+}
+let paused = false // dev: __game.pause(true) freezes the loop (step it with __game.advance)
+renderer.setAnimationLoop(() => paused || frame())
 
 window.addEventListener('beforeunload', bloxity.teardown)
 
@@ -490,5 +494,5 @@ if (import.meta.env.DEV) {
     resetPlayer({ x, y, z }, facing)
     syncYawToPlayer()
   }
-  window.__game = { player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, toggleDay, teleport, rebirth: rebirthWindow, trails: trailsScene, gifts: giftsWindow, daily: dailyWindow, spin: spinWindow, hud, race, training, eggs, pets: petsWindow, net, remotes, companions, plaza, worlds, env }
+  window.__game = { player, treadmill, base: myBase, net, remotes, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, hub, equip, lane, advance: (seconds, step = 1 / 60) => { for (let t = 0; t < seconds; t += step) frame(step) }, pause: (on) => { paused = on; if (!on) clock.getDelta() }, openSellFish, openIndex, openRods, openTrails }
 }

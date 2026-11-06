@@ -2,7 +2,7 @@
 // here may throw when the SDK is missing: a blocked sdk.bloxity.io leaves the
 // game fully playable on the default avatar and keyboard controls.
 // Docs: https://docs.bloxity.io/#html5
-import { GAME_SLUG, GAME_TITLE, SETTINGS, DEV_MODE, coerceSetting } from './config.js'
+import { GAME_SLUG, GAME_TITLE, LEADERBOARDS, SETTINGS, DEV_MODE, coerceSetting } from './config.js'
 
 export function sdk() {
   if (DEV_MODE) return null
@@ -145,6 +145,13 @@ export function init() {
     const onLocalhost = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
     SDK.init(onLocalhost ? { gameSlug: GAME_SLUG, portalUrl: 'https://bloxity.io' } : { gameSlug: GAME_SLUG })
     SDK.game.loadingStep(`Loading ${GAME_TITLE}`)
+    // Declares the boards behind Boxity's trophy button; the game server reports the scores, so the
+    // client never submits (it could not be trusted to).
+    try {
+      SDK.leaderboard?.define?.(LEADERBOARDS)
+    } catch (err) {
+      console.warn('[bloxity] leaderboard.define failed', err)
+    }
 
     for (const key of Object.keys(SETTINGS)) {
       const off = SDK.settings.listen(key, (raw) => {
@@ -261,6 +268,24 @@ export function getSkinTextureUrl() {
   }
 }
 
+// A custom character { glbUrl, ... } for these equipped ids, anyone's. null = the regular avatar.
+export async function getCharacterFor(equipped) {
+  try {
+    return (await sdk()?.avatar?.getCharacterFor?.(equipped)) ?? null
+  } catch {
+    return null
+  }
+}
+
+// M for an accessory on a custom character's bone, null when it has none.
+export function characterAccessoryMatrix(character, bone) {
+  try {
+    return sdk()?.avatar?.characterAccessoryMatrix?.(character, bone) ?? null
+  } catch {
+    return null
+  }
+}
+
 export const canCustomize = () => typeof sdk()?.avatar?.toggleCustomizer === 'function'
 
 // Opens / closes the portal's avatar editor; edits come back through onAvatarChanged.
@@ -327,6 +352,19 @@ export async function locateRoom(id) {
 export function updateRoom(roomId) {
   try {
     sdk()?.game?.updateRoom?.(roomId)
+  } catch {
+    // Ignore.
+  }
+}
+
+// Tells the portal who is in the room (join toasts, "who is here"). `already` = they were there when we
+// joined (playerInRoom), else they came after us (playerJoined).
+export function reportPlayer(username, already) {
+  if (!username) return
+  try {
+    const game = sdk()?.game
+    if (already) game?.playerInRoom?.(username)
+    else game?.playerJoined?.(username)
   } catch {
     // Ignore.
   }

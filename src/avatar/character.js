@@ -132,25 +132,43 @@ export function buildDefaultCharacter() {
 // so it never depends on the CDN. Same return shape as buildDefaultCharacter().
 // Falls back to the procedural character if the file fails to load.
 let basePromise = null
+// A loaded rig as this character's own clone, the same shape as buildDefaultCharacter().
+function shaped(gltf) {
+  const root = cloneSkeleton(gltf.scene)
+  root.name = 'character'
+  root.traverse((o) => {
+    if (o.isMesh || o.isSkinnedMesh) {
+      o.castShadow = true
+      o.frustumCulled = false
+    }
+  })
+  root.animations = gltf.animations || []
+  root.nodes = {}
+  root.traverse((o) => {
+    if (o.name) root.nodes[o.name] = o
+  })
+  root.scale.setScalar(PLAYER_DIMS.height / RIG_HEIGHT)
+  return root
+  }
+
+// A player's own uploaded character: the same bones and scale as player.glb, one load per URL.
+// null if it fails, and the regular avatar is drawn.
+const customs = new Map()
+export async function loadCustomCharacter(url) {
+  try {
+    if (!customs.has(url)) customs.set(url, new GLTFLoader().loadAsync(url))
+    return shaped(await customs.get(url))
+  } catch (err) {
+    customs.delete(url)
+    console.warn('[defaultCharacter] custom character failed to load', err)
+    return null
+  }
+}
+
 export async function loadBaseCharacter() {
   try {
     basePromise ||= new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}avatars/player.glb`)
-    const gltf = await basePromise
-    const root = cloneSkeleton(gltf.scene)
-    root.name = 'character'
-    root.traverse((o) => {
-      if (o.isMesh || o.isSkinnedMesh) {
-        o.castShadow = true
-        o.frustumCulled = false
-      }
-    })
-    root.animations = gltf.animations || []
-    root.nodes = {}
-    root.traverse((o) => {
-      if (o.name) root.nodes[o.name] = o
-    })
-    root.scale.setScalar(PLAYER_DIMS.height / RIG_HEIGHT)
-    return root
+    return shaped(await basePromise)
   } catch (err) {
     basePromise = null
     console.warn('[defaultCharacter] player.glb failed to load, using procedural character', err)

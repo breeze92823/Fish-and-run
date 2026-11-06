@@ -1,0 +1,687 @@
+/* Index window (indexWindow.js). Measured off the 1920x991 reference: every length is design
+   pixels times --u, e.g. calc(130 * var(--u)). --u is 1px on that screen, grows with bigger
+   screens, never drops below ~0.62px on tablets, and always shrinks so the window fits (phones).
+   Portrait phones stack the fish card and rewards side by side under the zone list. */
+.ix-overlay {
+  --dw: 1070; /* design size of the window */
+  --dh: 584;
+  --lift: 24; /* sits a little above centre, like the reference */
+  --u: min(
+    calc((100vw - 20px) / var(--dw)),
+    calc((100vh - 20px) / (var(--dh) + var(--lift))),
+    max(min(calc(100vw / 1920), calc(100vh / 991)), 0.62px)
+  );
+  --ink: #15151b;
+  --stud-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M7 25V7h18' fill='none' stroke='%23fff' stroke-opacity='.3' stroke-width='2.4'/%3E%3Cpath d='M25 7v18H7' fill='none' stroke='%23000' stroke-opacity='.1' stroke-width='2.4'/%3E%3C/svg%3E");
+  --stud-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M7 25V7h18' fill='none' stroke='%23000' stroke-opacity='.09' stroke-width='2.4'/%3E%3Cpath d='M25 7v18H7' fill='none' stroke='%23fff' stroke-opacity='.8' stroke-width='2.4'/%3E%3C/svg%3E");
+  --stud-black: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M7 25V7h18' fill='none' stroke='%23fff' stroke-opacity='.07' stroke-width='2.4'/%3E%3Cpath d='M25 7v18H7' fill='none' stroke='%23000' stroke-opacity='.45' stroke-width='2.4'/%3E%3C/svg%3E");
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  box-sizing: border-box;
+  font-family: 'Fredoka', 'Arial Black', system-ui, sans-serif;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  animation: ix-fade 0.18s ease-out;
+}
+@supports (height: 100dvh) {
+  .ix-overlay {
+    --u: min(
+      calc((100vw - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) / var(--dw)),
+      calc((100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / (var(--dh) + var(--lift))),
+      max(min(calc(100vw / 1920), calc(100dvh / 991)), 0.62px)
+    );
+  }
+}
+.ix-overlay[hidden],
+.ix-overlay [hidden] {
+  display: none !important;
+}
+.ix-overlay *,
+.ix-overlay *::before,
+.ix-overlay *::after {
+  box-sizing: border-box;
+}
+:where(.ix-overlay) button {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.ix-overlay svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Outlined white text: the stroke sits behind the fill. */
+.ix-out {
+  color: #fff;
+  -webkit-text-stroke: calc(var(--sw, 6) * var(--u)) var(--ink);
+  paint-order: stroke fill;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* --- Frame --------------------------------------------------------------------------- */
+.ix-win {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(var(--dw) * var(--u));
+  height: calc(var(--dh) * var(--u));
+  background: #23232b;
+  border: calc(4 * var(--u)) solid #0e0e12;
+  border-radius: calc(5 * var(--u));
+  box-shadow: 0 calc(10 * var(--u)) calc(30 * var(--u)) rgba(0, 0, 0, 0.35);
+  margin-bottom: calc(var(--lift) * var(--u));
+}
+.ix-win.pop {
+  animation: ix-pop 0.3s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.ix-overlay.closing {
+  animation: ix-fade 0.17s ease-in reverse forwards;
+}
+.ix-overlay.closing .ix-win {
+  animation: ix-shrink 0.17s ease-in forwards;
+}
+
+/* Header: lavender studded title bar + red X, dark seam between them. */
+.ix-head {
+  display: flex;
+  gap: calc(3 * var(--u));
+  height: calc(86 * var(--u));
+  flex: none;
+  background: #0e0e12;
+}
+.ix-titlebar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  padding-left: calc(6 * var(--u));
+  background: var(--stud-light) 0 0 / calc(30 * var(--u)) calc(30 * var(--u)), linear-gradient(#b9bafc, #a3a4f4 70%, #9293ea);
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 #7375d0, inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.35);
+}
+.ix-ticon {
+  width: calc(88 * var(--u));
+  height: calc(88 * var(--u));
+  flex: none;
+  margin-top: calc(6 * var(--u));
+}
+.ix-titlebar h2 {
+  margin: 0;
+  font-size: calc(66 * var(--u));
+  font-weight: 700;
+  --sw: 10;
+  letter-spacing: calc(0.5 * var(--u));
+  text-shadow: 0 calc(3 * var(--u)) 0 var(--ink);
+  transform: translateY(calc(-3 * var(--u)));
+}
+.ix-close {
+  position: relative;
+  width: calc(90 * var(--u));
+  flex: none;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: var(--stud-light) 0 0 / calc(30 * var(--u)) calc(30 * var(--u)), linear-gradient(#f2506a, #e2334e 70%, #cf2440);
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 #a3172e, inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.3);
+  transition: filter 0.1s;
+}
+.ix-close .ix-out {
+  font-size: calc(68 * var(--u));
+  --sw: 11;
+  text-shadow: 0 calc(3 * var(--u)) 0 var(--ink);
+}
+.ix-close::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+/* --- Body ------------------------------------------------------------------------------ */
+.ix-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: calc(12 * var(--u));
+  padding: calc(18 * var(--u)) calc(7 * var(--u)) calc(18 * var(--u)) calc(16 * var(--u));
+}
+.ix-left {
+  width: calc(734 * var(--u));
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(22 * var(--u));
+}
+.ix-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(7 * var(--u));
+}
+
+/* Zone list: one section per zone, scrolls. */
+.ix-zones {
+  position: relative;
+  height: calc(374 * var(--u));
+  flex: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  gap: calc(12 * var(--u));
+  padding: calc(7 * var(--u)) calc(4 * var(--u)) calc(7 * var(--u)) calc(8 * var(--u));
+  background: #121217;
+  border: calc(3 * var(--u)) solid #050507;
+  border-radius: calc(4 * var(--u));
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a46 transparent;
+}
+.ix-zone {
+  display: flex;
+  gap: calc(8 * var(--u));
+  flex: none;
+}
+.ix-zcard {
+  position: relative;
+  width: calc(146 * var(--u));
+  flex: none;
+  min-height: calc(353 * var(--u));
+  overflow: hidden;
+  border: calc(3 * var(--u)) solid #050507;
+  border-radius: calc(3 * var(--u));
+  background: #2a7326;
+}
+.ix-zcard svg {
+  position: absolute;
+  inset: 0;
+}
+.ix-zname {
+  position: absolute;
+  left: calc(20 * var(--u));
+  top: calc(12 * var(--u));
+  font-size: calc(30 * var(--u));
+  --sw: 7;
+}
+.ix-zmain {
+  width: calc(548 * var(--u));
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(8 * var(--u));
+}
+.ix-grid {
+  display: grid;
+  grid-template-columns: repeat(4, calc(131 * var(--u)));
+  grid-auto-rows: calc(133 * var(--u));
+  gap: calc(7 * var(--u)) calc(8 * var(--u));
+}
+
+/* Fish cells: tinted by rarity, white studded for Common. */
+.ix-cell {
+  --bg: #efeff2;
+  --edge: #c9c9d0;
+  --stud: var(--stud-dark);
+  position: relative;
+  display: block;
+  border: calc(3 * var(--u)) solid var(--edge);
+  border-radius: calc(3 * var(--u));
+  outline: calc(2 * var(--u)) solid #050507;
+  background: var(--stud) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), var(--bg);
+  transition: border-color 0.12s, box-shadow 0.12s, filter 0.1s;
+}
+.r-uncommon {
+  --bg: #4fd82c;
+  --edge: #3bb51e;
+  --stud: var(--stud-light);
+}
+.r-rare {
+  --bg: #2fd8f2;
+  --edge: #1cb2cc;
+  --stud: var(--stud-light);
+}
+.r-epic {
+  --bg: #e84ad8;
+  --edge: #c22ab4;
+  --stud: var(--stud-light);
+}
+.r-legendary {
+  --bg: #ff9a1a;
+  --edge: #e07a00;
+  --stud: var(--stud-light);
+}
+.r-mythic {
+  --bg: #ff3a3a;
+  --edge: #d02020;
+  --stud: var(--stud-light);
+}
+.r-secret {
+  --bg: linear-gradient(135deg, #f4f4f8, #b8b8c4 50%, #e2e2ea);
+  --edge: #9a9aa8;
+  --stud: var(--stud-light);
+}
+.ix-cell.sel {
+  border-color: #fff;
+  box-shadow: inset 0 0 0 calc(2 * var(--u)) #fff, 0 0 0 calc(2 * var(--u)) #fff;
+  filter: brightness(1.06);
+}
+.ix-cname {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transform-origin: 50% 50%;
+  top: calc(7 * var(--u));
+  text-align: center;
+  font-size: calc(22 * var(--u));
+  --sw: 6;
+  z-index: 1;
+}
+.ix-cname.long {
+  font-size: calc(19 * var(--u));
+  --sw: 5;
+  top: calc(9 * var(--u));
+}
+.ix-cname.xlong {
+  font-size: calc(17 * var(--u));
+  top: calc(10 * var(--u));
+}
+.ix-cpic {
+  position: absolute;
+  left: 50%;
+  top: calc(28 * var(--u));
+  width: calc(120 * var(--u));
+  height: calc(100 * var(--u));
+  transform: translateX(-50%);
+  object-fit: contain;
+  pointer-events: none;
+}
+.ix-cpic:not([src]) {
+  visibility: hidden;
+}
+.ix-cell.locked .ix-cpic,
+.ix-detail.locked .ix-dpic {
+  filter: brightness(0);
+  opacity: 0.92;
+}
+.ix-badge {
+  position: absolute;
+  right: calc(-7 * var(--u));
+  bottom: calc(-7 * var(--u));
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
+  display: none;
+  place-items: center;
+  border-radius: calc(5 * var(--u));
+  background: linear-gradient(#ff5a64, #e8263a);
+  border: calc(2.5 * var(--u)) solid #15151b;
+  z-index: 2;
+  animation: ix-wiggle 1.4s ease-in-out infinite;
+}
+.ix-badge .ix-out {
+  font-size: calc(20 * var(--u));
+  --sw: 5;
+}
+.ix-cell.claim .ix-badge {
+  display: grid;
+}
+
+/* Zone progress bar "2/8". */
+.ix-zbar {
+  position: relative;
+  width: calc(518 * var(--u));
+  height: calc(72 * var(--u));
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: calc(3 * var(--u)) solid #050507;
+  border-radius: calc(3 * var(--u));
+  background: var(--stud-black) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), #1a1a20;
+}
+.ix-zfill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#b4f53a, #92e01e 70%, #7ccc14);
+  box-shadow: inset calc(-3 * var(--u)) 0 0 #5ea712;
+  transition: width 0.4s cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+.ix-ztext {
+  position: relative;
+  font-size: calc(48 * var(--u));
+  --sw: 9;
+}
+
+/* "Unlocked: 3/88" bar with the book over its left end. */
+.ix-unlock {
+  position: relative;
+  height: calc(56 * var(--u));
+  flex: none;
+}
+.ix-utrack {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: calc(3 * var(--u)) solid #050507;
+  border-radius: calc(3 * var(--u));
+  background: var(--stud-black) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), #1a1a20;
+}
+.ix-ufill {
+  --p: 0;
+  position: absolute;
+  left: calc(56 * var(--u));
+  top: 0;
+  bottom: 0;
+  width: calc((100% - 56 * var(--u)) * var(--p));
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#5fd0ff, #2ea6f5 70%, #1b8ee0);
+  transition: width 0.4s ease-out;
+}
+.ix-utext {
+  position: relative;
+  font-size: calc(38 * var(--u));
+  --sw: 8;
+  margin-left: calc(10 * var(--u));
+}
+.ix-ubook {
+  position: absolute;
+  left: calc(-10 * var(--u));
+  top: calc(-16 * var(--u));
+  width: calc(88 * var(--u));
+  height: calc(88 * var(--u));
+  pointer-events: none;
+}
+
+/* --- Right: picked fish + rewards ---------------------------------------------------- */
+.ix-detail {
+  --bg: #efeff2;
+  --edge: #c9c9d0;
+  --stud: var(--stud-dark);
+  position: relative;
+  height: calc(258 * var(--u));
+  flex: none;
+  border: calc(3 * var(--u)) solid var(--edge);
+  border-radius: calc(3 * var(--u));
+  outline: calc(2 * var(--u)) solid #050507;
+  background: var(--stud) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), var(--bg);
+}
+.ix-dpic {
+  position: absolute;
+  left: 50%;
+  top: calc(16 * var(--u));
+  width: calc(200 * var(--u));
+  height: calc(150 * var(--u));
+  transform: translateX(-50%);
+  object-fit: contain;
+  pointer-events: none;
+}
+.ix-dname,
+.ix-drar,
+.ix-dearn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+.ix-dname {
+  top: calc(146 * var(--u));
+  font-size: calc(36 * var(--u));
+  --sw: 8;
+}
+.ix-dname.long {
+  font-size: calc(28 * var(--u));
+  top: calc(150 * var(--u));
+}
+.ix-drar {
+  top: calc(188 * var(--u));
+  font-size: calc(28 * var(--u));
+  --sw: 7;
+}
+.ix-dearn {
+  top: calc(218 * var(--u));
+  font-size: calc(30 * var(--u));
+  color: #6bff2c;
+  --sw: 7;
+}
+.ix-detail.r-uncommon .ix-drar { color: #c8ffb0; }
+.ix-detail.r-rare .ix-drar { color: #d6ecff; }
+.ix-detail.r-epic .ix-drar { color: #f2d6ff; }
+.ix-detail.r-legendary .ix-drar { color: #fff4c0; }
+.ix-detail.r-mythic .ix-drar { color: #ffd6d6; }
+.ix-detail.r-secret .ix-drar { color: #2a2a34; -webkit-text-stroke-color: #fff; }
+
+.ix-rewards {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: calc(3 * var(--u)) solid #2f5a10;
+  border-radius: calc(3 * var(--u));
+  outline: calc(2 * var(--u)) solid #050507;
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#b4f53a, #9ae32c 70%, #88d41f);
+  padding: calc(4 * var(--u)) calc(8 * var(--u)) calc(6 * var(--u));
+}
+.ix-rtitle {
+  align-self: flex-start;
+  font-size: calc(21 * var(--u));
+  --sw: 5;
+}
+.ix-rtiles {
+  display: flex;
+  gap: calc(6 * var(--u));
+  margin-top: calc(2 * var(--u));
+}
+.ix-rtile {
+  position: relative;
+  width: calc(86 * var(--u));
+  height: calc(86 * var(--u));
+  border: calc(3 * var(--u)) solid #15151b;
+  border-radius: calc(3 * var(--u));
+  background: var(--stud-light) 0 0 / calc(22 * var(--u)) calc(22 * var(--u)), linear-gradient(#5bd23a, #3fb526);
+}
+.ix-rico {
+  position: absolute;
+  left: 50%;
+  top: calc(6 * var(--u));
+  width: calc(68 * var(--u));
+  height: calc(56 * var(--u));
+  transform: translateX(-50%);
+}
+.ix-rtile .ix-out {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(4 * var(--u));
+  text-align: center;
+  font-size: calc(19 * var(--u));
+  --sw: 5;
+}
+.ix-claim {
+  position: relative;
+  margin-top: auto;
+  width: calc(214 * var(--u));
+  height: calc(56 * var(--u));
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: calc(3 * var(--u)) solid #15151b;
+  border-radius: calc(3 * var(--u));
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#cfcfd4, #b2b2b8 75%, #9e9ea4);
+  box-shadow: inset 0 calc(-4 * var(--u)) 0 rgba(0, 0, 0, 0.2), inset 0 calc(2 * var(--u)) 0 rgba(255, 255, 255, 0.5);
+  transition: filter 0.1s, transform 0.08s;
+}
+.ix-claim .ix-out {
+  font-size: calc(34 * var(--u));
+  --sw: 8;
+}
+.ix-claim[data-state='ready'] {
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#ffe14a, #ffc21a 70%, #f0a800);
+  animation: ix-ready 1.1s ease-in-out infinite;
+}
+.ix-claim[data-state='locked'] {
+  cursor: default;
+  filter: brightness(0.8);
+}
+.ix-claim::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+/* --- Feedback ------------------------------------------------------------------------ */
+@media (hover: hover) {
+  .ix-close:hover,
+  .ix-cell:hover,
+  .ix-claim[data-state='ready']:hover {
+    filter: brightness(1.08);
+  }
+}
+.ix-close:active,
+.ix-claim[data-state='ready']:active {
+  transform: translateY(calc(2 * var(--u))) scale(0.97);
+  filter: brightness(0.92);
+}
+.ix-cell:active {
+  filter: brightness(0.94);
+}
+.ix-overlay .bump {
+  animation: ix-bump 0.22s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+.ix-claim.shake {
+  animation: ix-shake 0.32s ease-in-out;
+}
+.ix-zone.cascade .ix-cell {
+  animation: ix-cell-in 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 0.03s + 0.06s);
+}
+.ix-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 5;
+}
+.ix-coin {
+  position: absolute;
+  display: block;
+  transform: translate(-50%, -50%);
+}
+.ix-plus {
+  position: absolute;
+  font-size: calc(34 * var(--u));
+  color: #6bff2c;
+  --sw: 8;
+  white-space: pre;
+  transform: translate(-50%, -50%);
+  animation: ix-plus 1.1s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+@keyframes ix-fade {
+  from { opacity: 0; }
+}
+@keyframes ix-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { opacity: 1; }
+}
+@keyframes ix-shrink {
+  to { transform: scale(0.85); opacity: 0; }
+}
+@keyframes ix-bump {
+  40% { transform: scale(1.06); }
+}
+@keyframes ix-shake {
+  20% { transform: translateX(calc(-8 * var(--u))) rotate(-2deg); }
+  40% { transform: translateX(calc(7 * var(--u))) rotate(2deg); }
+  60% { transform: translateX(calc(-5 * var(--u))); }
+  80% { transform: translateX(calc(3 * var(--u))); }
+}
+@keyframes ix-ready {
+  50% { filter: brightness(1.14); }
+}
+@keyframes ix-wiggle {
+  0%, 70%, 100% { transform: rotate(0); }
+  78% { transform: rotate(-14deg) scale(1.1); }
+  86% { transform: rotate(12deg) scale(1.1); }
+}
+@keyframes ix-cell-in {
+  from { transform: scale(0.4) translateY(calc(20 * var(--u))); opacity: 0; }
+}
+@keyframes ix-plus {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  20% { transform: translate(-50%, -110%) scale(1.15); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(-50%, -260%) scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ix-overlay,
+  .ix-win.pop,
+  .ix-zone.cascade .ix-cell,
+  .ix-claim[data-state='ready'],
+  .ix-badge {
+    animation: none;
+  }
+}
+
+/* --- Portrait phones: fish card and rewards side by side under the zone list -------- */
+@media (max-aspect-ratio: 4/5) {
+  .ix-overlay {
+    --dw: 774;
+    --dh: 856;
+    --lift: 0;
+  }
+  .ix-body {
+    flex-direction: column;
+    gap: calc(14 * var(--u));
+  }
+  .ix-right {
+    flex-direction: row;
+    gap: calc(10 * var(--u));
+    width: calc(734 * var(--u));
+    height: calc(258 * var(--u));
+    flex: none;
+  }
+  .ix-detail,
+  .ix-rewards {
+    flex: 1;
+    height: auto;
+  }
+  .ix-rewards {
+    justify-content: space-between;
+  }
+  .ix-rtile {
+    width: calc(110 * var(--u));
+    height: calc(110 * var(--u));
+  }
+  .ix-rico {
+    width: calc(86 * var(--u));
+    height: calc(70 * var(--u));
+  }
+  .ix-rtitle {
+    font-size: calc(26 * var(--u));
+  }
+  .ix-rtile .ix-out {
+    font-size: calc(24 * var(--u));
+  }
+  .ix-claim {
+    width: calc(260 * var(--u));
+    height: calc(64 * var(--u));
+  }
+}

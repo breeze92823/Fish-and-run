@@ -36,6 +36,9 @@ export const AVATAR_SLOTS = [
   { key: 'waistId', kind: 'item', attach: 'Spine1', at: [0, 0, 0] },
 ]
 
+// Where each item sits in player.glb's model space, for a custom character's own placement.
+export const MODEL_PLACEMENT = { hatId: 5.6, hairId: 5.6, maskId: 5.6, backId: 4.2, neckId: 4.8, chestId: 3.6, waistId: 2.4 }
+
 export function partUrl(slot, id) {
   const suffix = slot.side ? `_${slot.side}` : ''
   return `${AVATAR_CDN}/parts/${slot.type}/${id}${suffix}.glb`

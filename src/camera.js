@@ -3,6 +3,7 @@ import { player } from './player.js'
 import { segmentClear } from './physics.js'
 import { isFirstPerson, onModeChanged, setMode } from './modes.js'
 import { CAMERA, PHYSICS } from './config.js'
+import { runSpeed } from './speed.js'
 
 // One camera, two modes (modes.js). Character mode is a third-person chase cam
 // (ported from Clean Leaves for Loot): it owns its own yaw/pitch and orbits the
@@ -28,6 +29,20 @@ let zoomTarget = CAMERA.distance
 let zoomEased = CAMERA.distance
 let rush = 0 // eased 0..1 sprint factor
 let clearance = 1 // 0..1 of the boom the walls allow, eased back out
+
+// Screen shake (bat hits): a decaying random offset added after the camera is placed.
+let shakeAmp = 0
+export function shake(amount) {
+  shakeAmp = Math.max(shakeAmp, amount)
+}
+function applyShake(camera, dt) {
+  if (shakeAmp < 0.002) return
+  const a = shakeAmp
+  camera.position.x += (Math.random() * 2 - 1) * a
+  camera.position.y += (Math.random() * 2 - 1) * a * 0.7
+  camera.position.z += (Math.random() * 2 - 1) * a
+  shakeAmp *= Math.exp(-9 * dt)
+}
 
 export const getYaw = () => state.yaw
 export const getPitch = () => state.pitch
@@ -105,7 +120,7 @@ export function update(camera, dt) {
   }
 
   // Sprint framing: FOV widens a little at speed.
-  const speed = Math.hypot(player.velocity.x, player.velocity.z)
+  const speed = (Math.hypot(player.velocity.x, player.velocity.z) * PHYSICS.walkSpeed) / runSpeed(player.speedStat) // a high speed stat shouldn't read as sprinting
   const targetRush = clamp((speed - PHYSICS.walkSpeed) / (PHYSICS.sprintSpeed - PHYSICS.walkSpeed), 0, 1)
   rush += (targetRush - rush) * (1 - Math.exp(-CAMERA.speedEase * dt))
   const fov = CAMERA.fov + CAMERA.speedFov * rush
@@ -119,6 +134,7 @@ export function update(camera, dt) {
     const cp = Math.cos(state.pitch)
     camera.position.set(followed.x, eyeY, followed.z)
     camera.lookAt(followed.x - Math.sin(state.yaw) * cp, eyeY - Math.sin(state.pitch), followed.z - Math.cos(state.yaw) * cp)
+    applyShake(camera, dt)
     return
   }
 
@@ -142,4 +158,5 @@ export function update(camera, dt) {
 
   camera.position.set(look.x + (px - look.x) * clearance, look.y + (py - look.y) * clearance, look.z + (pz - look.z) * clearance)
   camera.lookAt(look.x, look.y, look.z)
+  applyShake(camera, dt)
 }

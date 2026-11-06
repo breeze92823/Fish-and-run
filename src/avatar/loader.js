@@ -12,6 +12,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
   Color,
+  Matrix4,
   FrontSide,
   MeshStandardMaterial,
   NearestFilter,
@@ -20,7 +21,8 @@ import {
   TextureLoader,
 } from 'three'
 import { MATERIAL_PBR, PLAYER_DIMS, PROPORTIONS, RIG, RIG_HEIGHT, clamp } from '../config.js'
-import { AVATAR_SLOTS, assetUrl, composedSkinUrl, describeItem, isEquipped, itemUrls, partUrl, skinUrl } from './cdn.js'
+import { characterAccessoryMatrix } from '../bloxity.js'
+import { AVATAR_SLOTS, MODEL_PLACEMENT, assetUrl, composedSkinUrl, describeItem, isEquipped, itemUrls, partUrl, skinUrl } from './cdn.js'
 
 const HAT_LIFT = 0.8
 
@@ -161,7 +163,7 @@ async function applyPart(root, slot, id) {
   target.geometry = geometry
 }
 
-async function applyItem(root, slot, id) {
+async function applyItem(root, slot, id, character) {
   const anchor = root.nodes[slot.attach]
   if (!anchor) return
   const item = await describeItem(id)
@@ -192,6 +194,14 @@ async function applyItem(root, slot, id) {
       texture ? { map: texture, ...MATERIAL_PBR.PLAYER } : { color: '#cccccc', ...MATERIAL_PBR.PLAYER },
     )
   })
+  // A custom character's items: M * the item's place on the base rig.
+  const M = character ? characterAccessoryMatrix(character, slot.attach) : null
+  if (M) {
+    object.matrixAutoUpdate = false
+    object.matrix.fromArray(M).multiply(new Matrix4().makeTranslation(0, MODEL_PLACEMENT[slot.key] ?? 0, 0))
+    anchor.add(object)
+    return
+  }
   // Hats are authored for the portal rig, whose renderer parents them to the
   // head bone lifted 0.8 up; at the bone origin they sink into the head.
   if (slot.at) object.position.set(...slot.at)
@@ -216,18 +226,21 @@ async function withForcedHead(equipped) {
 // `equipped` is the shape SDK.avatar.getEquipped() returns. `root` is a
 // character from avatar/character.js, whose `nodes` map names every rig node.
 // `signal` (optional AbortSignal) lets a caller cancel a stale load.
-export async function attachEquippedAccessories(root, equipped, { signal, skinTextureUrl } = {}) {
+// A custom `character` keeps its own skin and body: only the items go on it.
+export async function attachEquippedAccessories(root, equipped, { signal, skinTextureUrl, character = null } = {}) {
   if (!root || !equipped) return
   try {
-    ownMaterials(root)
-    equipped = await withForcedHead(equipped)
-    if (signal?.aborted) return
-    await applySkin(root, equipped, skinTextureUrl)
-    if (signal?.aborted) return
+    if (!character) {
+      ownMaterials(root)
+      equipped = await withForcedHead(equipped)
+      if (signal?.aborted) return
+      await applySkin(root, equipped, skinTextureUrl)
+      if (signal?.aborted) return
+    }
     // Slots load in parallel; each one swallows its own failure.
     await Promise.all(
-      AVATAR_SLOTS.filter((slot) => isEquipped(equipped[slot.key])).map((slot) =>
-        slot.kind === 'part' ? applyPart(root, slot, equipped[slot.key]) : applyItem(root, slot, equipped[slot.key]),
+      AVATAR_SLOTS.filter((slot) => isEquipped(equipped[slot.key]) && !(character && slot.kind === 'part')).map((slot) =>
+        slot.kind === 'part' ? applyPart(root, slot, equipped[slot.key]) : applyItem(root, slot, equipped[slot.key], character),
       ),
     )
   } catch (err) {

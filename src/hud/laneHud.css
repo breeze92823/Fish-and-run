@@ -1,0 +1,320 @@
+/* Lane HUD (laneHud.js), on the HUD's --u grid (1 reference px at 1920x992). */
+.lane > * {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: max-content;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s, visibility 0s linear 0.18s;
+}
+.lane > .on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.18s;
+}
+
+/* Zone banner: green gradient letters on a dark band that fades out at both ends. */
+.lane-banner {
+  top: calc(158 * var(--u));
+  width: calc(340 * var(--u));
+  padding: calc(8 * var(--u)) 0;
+  text-align: center;
+  background: linear-gradient(90deg, rgba(20, 24, 30, 0), rgba(20, 24, 30, 0.55) 22%, rgba(20, 24, 30, 0.55) 78%, rgba(20, 24, 30, 0));
+  transition: opacity var(--fade, 0.6s), visibility 0s linear var(--fade, 0.6s);
+}
+.lane-banner.on {
+  animation: lane-pop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+  transition: opacity 0.15s;
+}
+.lane-banner-text {
+  font-size: calc(46 * var(--u));
+  letter-spacing: calc(1 * var(--u));
+  --sw: calc(8 * var(--u));
+  --sc: #0e1a0a;
+}
+.lane-banner-text .ot-fill {
+  background: linear-gradient(180deg, var(--g1, #d8ff4a), var(--g2, #3ac800));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lane-banner-sub {
+  display: block;
+  margin-top: calc(2 * var(--u));
+  font-size: calc(24 * var(--u));
+  --sw: calc(6 * var(--u));
+  --sc: #0e1a0a;
+  color: #b8ff6a;
+}
+.lane-banner-sub.low {
+  color: #ff5a4a;
+  --sc: #2a0806;
+}
+
+/* Cast: a big lime button sitting on the backpack bar. */
+.lane-cast {
+  bottom: var(--lane-bottom, calc(165 * var(--u)));
+  width: calc(282 * var(--u));
+  height: calc(92 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: calc(6 * var(--u)) solid #0d1f05;
+  border-radius: calc(4 * var(--u));
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.25) 0 calc(4 * var(--u)), transparent calc(5 * var(--u))) 0 0 / calc(36 * var(--u)) calc(36 * var(--u)),
+    linear-gradient(180deg, #f2ff3a 0%, #c8f028 38%, #4cd400 100%);
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 rgba(0, 80, 0, 0.35), 0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.25);
+}
+.lane-cast.on {
+  pointer-events: auto;
+  animation: lane-pop 0.25s ease-out;
+}
+.lane-cast.is-down {
+  transform: scale(0.94);
+}
+.lane-cast-text {
+  font-size: calc(52 * var(--u));
+  --sw: calc(9 * var(--u));
+}
+
+/* Action (treadmill Upgrade): the Cast button's spot, a title over a price. */
+.lane-act {
+  bottom: var(--lane-bottom, calc(165 * var(--u)));
+  min-width: calc(300 * var(--u));
+  padding: calc(8 * var(--u)) calc(26 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: calc(6 * var(--u)) solid #0d1f05;
+  border-radius: calc(4 * var(--u));
+  background: linear-gradient(180deg, #f2ff3a 0%, #c8f028 38%, #4cd400 100%);
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 rgba(0, 80, 0, 0.35), 0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.25);
+}
+.lane-act.on {
+  pointer-events: auto;
+  animation: lane-pop 0.25s ease-out;
+}
+.lane-act.is-down {
+  transform: scale(0.94);
+}
+.lane-act.poor {
+  border-color: #1a1a1e;
+  background: linear-gradient(180deg, #c8ccd4 0%, #9aa0aa 45%, #6a707c 100%);
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 rgba(0, 0, 0, 0.25), 0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.25);
+}
+.lane-act-title {
+  font-size: calc(30 * var(--u));
+  --sw: calc(7 * var(--u));
+}
+.lane-act-price {
+  font-size: calc(40 * var(--u));
+  --sw: calc(8 * var(--u));
+}
+
+/* Click Fast! */
+.lane-clicker {
+  bottom: calc(var(--lane-bottom, calc(165 * var(--u))) + 6 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  transform: translateX(calc(37 * var(--u)));
+}
+.lane-click-label {
+  font-size: calc(40 * var(--u));
+  --sw: calc(7 * var(--u));
+  transform: translateX(calc(-37 * var(--u)));
+}
+.lane-row {
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--u));
+}
+.lane-track {
+  position: relative;
+  width: calc(665 * var(--u));
+  height: calc(44 * var(--u));
+  background: #1d343a;
+  border: calc(3 * var(--u)) solid #101c20;
+  box-shadow: inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.06);
+}
+.lane-fill {
+  --p: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--p) * (50% - 72 * var(--u)));
+  background: linear-gradient(180deg, #7ad8b0, #3a9a80);
+  transition: width 0.08s linear;
+}
+.lane-fill-l {
+  right: calc(50% + 72 * var(--u));
+}
+.lane-fill-r {
+  left: calc(50% + 72 * var(--u));
+}
+.lane-fishbox {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(146 * var(--u));
+  height: calc(54 * var(--u));
+  transform: translate(-50%, -50%);
+  background: linear-gradient(180deg, #ffffff, #dfe6ea);
+  border: calc(3 * var(--u)) solid #6a4a30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lane-fishpic {
+  position: absolute;
+  inset: 12% 22%;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.lane-fishpic.on {
+  opacity: 0.9;
+}
+.lane-q {
+  font-size: calc(30 * var(--u));
+  --sw: calc(5 * var(--u));
+}
+.lane-stop {
+  width: calc(102 * var(--u));
+  height: calc(40 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #ff4a4a, #c41818);
+  border: calc(3 * var(--u)) solid #5a0808;
+}
+.lane-clicker.on .lane-stop {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.lane-stop-text {
+  font-size: calc(24 * var(--u));
+  --sw: calc(5 * var(--u));
+}
+.lane-catcher {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  margin: 0;
+  background: transparent;
+}
+.lane-catcher.on {
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* RUN! */
+.lane-run {
+  top: calc(122 * var(--u));
+}
+.lane-run.on {
+  animation: lane-run 2.4s ease-out forwards;
+}
+.lane-run-text {
+  font-size: calc(62 * var(--u));
+  --sw: calc(9 * var(--u));
+  --sc: #1a0404;
+}
+.lane-run-text .ot-fill {
+  color: #ff1e1e;
+}
+
+/* Don't stop! */
+.lane-warn {
+  bottom: var(--lane-bottom, calc(166 * var(--u)));
+}
+.lane-warn.on {
+  animation: lane-blink 0.9s ease-in-out infinite;
+}
+.lane-warn-text {
+  font-size: calc(30 * var(--u));
+  --sw: calc(6 * var(--u));
+  --sc: #3a0404;
+}
+.lane-warn-text .ot-fill {
+  color: #ff2a2a;
+}
+
+@keyframes lane-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes lane-run {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  12% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  22% {
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes lane-blink {
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+/* Phones: keep the pieces readable and tappable when --u is small. */
+.hud[data-mode='port'] .lane-track,
+.hud[data-mode='land'] .lane-track {
+  width: min(calc(665 * var(--u)), 62vw);
+}
+.hud[data-mode='port'] .lane-cast,
+.hud[data-mode='land'] .lane-cast {
+  min-width: 132px;
+  min-height: 46px;
+}
+.hud[data-mode='port'] .lane-act,
+.hud[data-mode='land'] .lane-act {
+  min-width: 132px;
+  min-height: 46px;
+  padding: 3px 8px;
+  border-width: 3px;
+}
+.hud[data-mode='port'] .lane-banner-sub,
+.hud[data-mode='land'] .lane-banner-sub {
+  font-size: max(12px, calc(24 * var(--u)));
+  --sw: 4px;
+}
+/* Portrait: the cash counter reaches under the backpack's left edge; sit above it. */
+.hud[data-mode='port'] .lane-act {
+  bottom: calc(var(--lane-bottom, 0px) + 36px);
+}
+.hud[data-mode='port'] .lane-act-title,
+.hud[data-mode='land'] .lane-act-title {
+  font-size: max(12px, calc(30 * var(--u)));
+  --sw: 4px;
+}
+.hud[data-mode='port'] .lane-act-price,
+.hud[data-mode='land'] .lane-act-price {
+  font-size: max(15px, calc(40 * var(--u)));
+  --sw: 5px;
+}
+.hud[data-mode='port'] .lane-stop,
+.hud[data-mode='land'] .lane-stop {
+  min-width: 52px;
+  min-height: 44px;
+}

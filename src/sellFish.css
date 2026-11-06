@@ -1,0 +1,570 @@
+/* Sell Fish window (sellFish.js). Measured off the 1920x991 reference: every length is
+   design pixels times --u, e.g. calc(86 * var(--u)). --u is 1px on that screen, grows
+   with bigger screens, never drops below ~0.62px on tablets, and always shrinks to fit
+   the window on screen (phones). Portrait phones get a taller layout with the sort
+   buttons in a row above the grid. */
+.sf-overlay {
+  --dw: 940; /* design size of the window */
+  --dh: 617;
+  --u: min(
+    calc((100vw - 20px) / var(--dw)),
+    calc((100vh - 20px) / (var(--dh) + 34)),
+    max(min(calc(100vw / 1920), calc(100vh / 991)), 0.62px)
+  );
+  --ink: #15151b;
+  --stud-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M7 25V7h18' fill='none' stroke='%23fff' stroke-opacity='.3' stroke-width='2.4'/%3E%3Cpath d='M25 7v18H7' fill='none' stroke='%23000' stroke-opacity='.1' stroke-width='2.4'/%3E%3C/svg%3E");
+  --stud-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M7 25V7h18' fill='none' stroke='%23000' stroke-opacity='.09' stroke-width='2.4'/%3E%3Cpath d='M25 7v18H7' fill='none' stroke='%23fff' stroke-opacity='.8' stroke-width='2.4'/%3E%3C/svg%3E");
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  box-sizing: border-box;
+  font-family: 'Fredoka', 'Arial Black', system-ui, sans-serif;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  animation: sf-fade 0.18s ease-out;
+}
+@supports (height: 100dvh) {
+  .sf-overlay {
+    --u: min(
+      calc((100vw - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) / var(--dw)),
+      calc((100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / (var(--dh) + 34)),
+      max(min(calc(100vw / 1920), calc(100dvh / 991)), 0.62px)
+    );
+  }
+}
+.sf-overlay[hidden] {
+  display: none;
+}
+.sf-overlay *,
+.sf-overlay *::before,
+.sf-overlay *::after {
+  box-sizing: border-box;
+}
+:where(.sf-overlay) button {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Outlined white text, Roblox style: the stroke sits behind the fill. */
+.sf-out {
+  color: #fff;
+  -webkit-text-stroke: calc(var(--sw, 6) * var(--u)) var(--ink);
+  paint-order: stroke fill;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* --- Frame --------------------------------------------------------------------------- */
+.sf-win {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(var(--dw) * var(--u));
+  height: calc(var(--dh) * var(--u));
+  background: #23232b;
+  border: calc(4 * var(--u)) solid #0e0e12;
+  border-radius: calc(5 * var(--u));
+  box-shadow: 0 calc(10 * var(--u)) calc(30 * var(--u)) rgba(0, 0, 0, 0.35);
+  margin-bottom: calc(34 * var(--u)); /* sits a little above centre, like the reference */
+}
+.sf-win.pop {
+  animation: sf-pop 0.3s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.sf-overlay.closing {
+  animation: sf-fade 0.17s ease-in reverse forwards;
+}
+.sf-overlay.closing .sf-win {
+  animation: sf-shrink 0.17s ease-in forwards;
+}
+
+/* Header: lime title bar + red X, dark seam between them. */
+.sf-head {
+  display: flex;
+  gap: calc(3 * var(--u));
+  height: calc(86 * var(--u));
+  flex: none;
+  background: #0e0e12;
+}
+.sf-titlebar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  padding-left: calc(10 * var(--u));
+  background: var(--stud-light) 0 0 / calc(30 * var(--u)) calc(30 * var(--u)), linear-gradient(#a8ef33, #8cdc22 70%, #78c818);
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 #5ea712, inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.35);
+}
+.sf-ticon {
+  width: calc(100 * var(--u));
+  height: calc(60 * var(--u));
+  flex: none;
+  display: block;
+}
+.sf-ticon svg,
+.sf-ico svg,
+.sf-cash svg,
+.sf-pick svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.sf-titlebar h2 {
+  margin: 0;
+  font-size: calc(56 * var(--u));
+  font-weight: 700;
+  --sw: 9;
+  letter-spacing: calc(0.5 * var(--u));
+  text-shadow: 0 calc(3 * var(--u)) 0 var(--ink);
+  transform: translateY(calc(-2 * var(--u)));
+}
+.sf-close {
+  position: relative;
+  width: calc(86 * var(--u));
+  flex: none;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: var(--stud-light) 0 0 / calc(30 * var(--u)) calc(30 * var(--u)), linear-gradient(#f2506a, #e2334e 70%, #cf2440);
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 #a3172e, inset 0 calc(3 * var(--u)) 0 rgba(255, 255, 255, 0.3);
+  transition: filter 0.1s;
+}
+.sf-close .sf-out {
+  font-size: calc(62 * var(--u));
+  --sw: 10;
+  text-shadow: 0 calc(3 * var(--u)) 0 var(--ink);
+}
+.sf-close::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+/* --- Body: sort column + fish grid ------------------------------------------------- */
+.sf-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: calc(11 * var(--u));
+  padding: calc(19 * var(--u)) calc(11 * var(--u)) 0 calc(13 * var(--u));
+}
+.sf-side,
+.sf-gridwrap,
+.sf-foot {
+  background: #16161c;
+  border: calc(3 * var(--u)) solid #2c2c36;
+  border-radius: calc(4 * var(--u));
+}
+.sf-side {
+  width: calc(180 * var(--u));
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: calc(10 * var(--u));
+  gap: calc(9 * var(--u));
+}
+.sf-sortby {
+  font-size: calc(27 * var(--u));
+  --sw: 6;
+  margin-bottom: calc(1 * var(--u));
+}
+.sf-rule {
+  width: calc(138 * var(--u));
+  height: calc(2 * var(--u));
+  background: #3a3a46;
+  margin: calc(2 * var(--u)) 0;
+}
+
+/* Chunky stud buttons: grey (off) / lime (on). */
+.sf-btn {
+  position: relative;
+  width: calc(160 * var(--u));
+  height: calc(48 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(10 * var(--u));
+  border: calc(3 * var(--u)) solid #3a3a42;
+  border-radius: calc(3 * var(--u));
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#dcdce0, #b9b9bf 75%, #a6a6ac);
+  box-shadow: inset 0 calc(-4 * var(--u)) 0 rgba(0, 0, 0, 0.18), inset 0 calc(2 * var(--u)) 0 rgba(255, 255, 255, 0.5);
+  transition: filter 0.1s, transform 0.08s;
+}
+.sf-btn.green {
+  border-color: #2f5a10;
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#c2f54a, #9ae32c 70%, #84d01f);
+}
+.sf-btn .sf-out {
+  font-size: calc(24 * var(--u));
+  --sw: 6;
+}
+.sf-btn::after {
+  content: '';
+  position: absolute;
+  inset: -5px; /* tap target past the drawn edge (44px+ on phones) */
+}
+.sf-ico {
+  display: block;
+  flex: none;
+}
+.sf-arrow {
+  width: calc(26 * var(--u));
+  height: calc(32 * var(--u));
+  margin-left: calc(-8 * var(--u));
+  transition: transform 0.18s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.sf-sort.asc .sf-arrow {
+  transform: rotate(180deg);
+}
+.sf-all {
+  height: calc(52 * var(--u));
+  gap: calc(6 * var(--u));
+  padding-right: calc(4 * var(--u));
+}
+.sf-all .sf-out {
+  font-size: calc(21 * var(--u));
+}
+.sf-check {
+  width: calc(38 * var(--u));
+  height: calc(38 * var(--u));
+}
+
+/* Grid of fish cards (scrolls). */
+.sf-gridwrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: #111117;
+}
+.sf-grid {
+  position: absolute;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, calc(158 * var(--u)));
+  grid-auto-rows: calc(158 * var(--u));
+  gap: calc(12 * var(--u));
+  align-content: start;
+  padding: calc(12 * var(--u));
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a58 transparent;
+}
+.sf-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(10 * var(--u));
+  font-size: calc(32 * var(--u));
+  --sw: 7;
+  pointer-events: none;
+}
+.sf-empty[hidden] {
+  display: none;
+}
+.sf-empty small {
+  font-size: calc(20 * var(--u));
+  color: #b9b9c6;
+  --sw: 5;
+}
+
+.sf-card {
+  position: relative;
+  display: block;
+  border: calc(3 * var(--u)) solid #d6d6da;
+  border-radius: calc(3 * var(--u));
+  outline: calc(2 * var(--u)) solid #050507;
+  background: var(--stud-dark) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), #f1f1f3;
+  transition: border-color 0.12s, box-shadow 0.12s, filter 0.1s;
+}
+.sf-kg {
+  position: absolute;
+  left: calc(5 * var(--u));
+  top: calc(6 * var(--u));
+  font-size: calc(17 * var(--u));
+  --sw: 5;
+  z-index: 1;
+}
+.sf-pic {
+  position: absolute;
+  left: 50%;
+  top: calc(18 * var(--u));
+  width: calc(108 * var(--u));
+  height: calc(92 * var(--u));
+  transform: translateX(-50%);
+  object-fit: contain;
+  pointer-events: none;
+}
+.sf-pic:not([src]) {
+  visibility: hidden;
+}
+.sf-earn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(98 * var(--u));
+  text-align: center;
+  font-size: calc(21 * var(--u));
+  color: #6bff2c;
+  --sw: 6;
+  z-index: 1;
+}
+.sf-price {
+  position: absolute;
+  left: calc(2 * var(--u));
+  right: calc(2 * var(--u));
+  bottom: calc(2 * var(--u));
+  height: calc(32 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(10 * var(--u));
+  background: #2a2a32;
+  border: calc(2 * var(--u)) solid #8c8c94;
+  border-radius: calc(2 * var(--u));
+  padding-right: calc(10 * var(--u));
+}
+.sf-price .sf-cash {
+  width: calc(36 * var(--u));
+  height: calc(29 * var(--u));
+}
+.sf-price .sf-out {
+  font-size: calc(20 * var(--u));
+  --sw: 5;
+}
+.sf-pick {
+  position: absolute;
+  right: calc(4 * var(--u));
+  top: calc(4 * var(--u));
+  width: calc(30 * var(--u));
+  height: calc(30 * var(--u));
+  z-index: 2;
+  transform: scale(0);
+  transition: transform 0.16s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+.sf-card.picked {
+  border-color: #7dff2a;
+  box-shadow: 0 0 0 calc(2 * var(--u)) #7dff2a, 0 0 calc(16 * var(--u)) rgba(125, 255, 42, 0.75), inset 0 0 calc(18 * var(--u)) rgba(125, 255, 42, 0.45);
+}
+.sf-card.picked .sf-pick {
+  transform: scale(1);
+}
+.sf-card.gone {
+  pointer-events: none;
+  animation: sf-gone 0.23s ease-in forwards;
+}
+.sf-grid.cascade .sf-card {
+  animation: sf-card-in 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 0.03s + 0.06s);
+}
+
+/* --- Footer: total + Sell ---------------------------------------------------------- */
+.sf-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: calc(82 * var(--u));
+  margin: calc(10 * var(--u)) calc(11 * var(--u)) calc(16 * var(--u)) calc(13 * var(--u));
+  padding: 0 calc(15 * var(--u)) 0 calc(26 * var(--u));
+}
+.sf-total-label {
+  font-size: calc(37 * var(--u));
+  --sw: 8;
+}
+.sf-foot > .sf-cash {
+  width: calc(78 * var(--u));
+  height: calc(62 * var(--u));
+  margin-left: calc(46 * var(--u));
+  flex: none;
+}
+.sf-total {
+  font-size: calc(42 * var(--u));
+  --sw: 9;
+  margin-left: calc(12 * var(--u));
+  display: inline-block;
+}
+.sf-sell {
+  position: relative;
+  margin-left: auto;
+  width: calc(192 * var(--u));
+  height: calc(58 * var(--u));
+  border: calc(3 * var(--u)) solid #3a3a42;
+  border-radius: calc(3 * var(--u));
+  display: grid;
+  place-items: center;
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#dcdce0, #b9b9bf 75%, #a6a6ac);
+  box-shadow: inset 0 calc(-4 * var(--u)) 0 rgba(0, 0, 0, 0.18), inset 0 calc(2 * var(--u)) 0 rgba(255, 255, 255, 0.5);
+  transition: filter 0.1s, transform 0.08s;
+}
+.sf-sell.ready {
+  border-color: #2f5a10;
+  background: var(--stud-light) 0 0 / calc(26 * var(--u)) calc(26 * var(--u)), linear-gradient(#c2f54a, #9ae32c 70%, #84d01f);
+  animation: sf-ready 1.2s ease-in-out infinite;
+}
+.sf-sell .sf-out {
+  font-size: calc(36 * var(--u));
+  --sw: 8;
+}
+.sf-sell::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+/* --- Feedback ------------------------------------------------------------------------ */
+@media (hover: hover) {
+  .sf-btn:hover,
+  .sf-sell:hover,
+  .sf-close:hover,
+  .sf-card:hover {
+    filter: brightness(1.08);
+  }
+}
+.sf-btn:active,
+.sf-sell:active,
+.sf-close:active {
+  transform: translateY(calc(2 * var(--u))) scale(0.97);
+  filter: brightness(0.92);
+}
+.sf-card:active {
+  filter: brightness(0.94);
+}
+.sf-overlay .bump {
+  animation: sf-bump 0.22s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+.sf-sell.shake {
+  animation: sf-shake 0.32s ease-in-out;
+}
+.sf-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 5;
+}
+.sf-coin {
+  position: absolute;
+  display: block;
+  transform: translate(-50%, -50%);
+}
+.sf-coin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.sf-plus {
+  position: absolute;
+  font-size: calc(40 * var(--u));
+  color: #6bff2c;
+  --sw: 9;
+  transform: translate(-50%, -50%);
+  animation: sf-plus 1.1s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+@keyframes sf-fade {
+  from { opacity: 0; }
+}
+@keyframes sf-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { opacity: 1; }
+}
+@keyframes sf-shrink {
+  to { transform: scale(0.85); opacity: 0; }
+}
+@keyframes sf-bump {
+  40% { transform: scale(1.08); }
+}
+@keyframes sf-shake {
+  20% { transform: translateX(calc(-8 * var(--u))) rotate(-2deg); }
+  40% { transform: translateX(calc(7 * var(--u))) rotate(2deg); }
+  60% { transform: translateX(calc(-5 * var(--u))); }
+  80% { transform: translateX(calc(3 * var(--u))); }
+}
+@keyframes sf-ready {
+  50% { filter: brightness(1.12); }
+}
+@keyframes sf-card-in {
+  from { transform: scale(0.4) translateY(calc(20 * var(--u))); opacity: 0; }
+}
+@keyframes sf-gone {
+  40% { transform: scale(1.1) rotate(-4deg); }
+  to { transform: scale(0) rotate(12deg); opacity: 0; }
+}
+@keyframes sf-plus {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  20% { transform: translate(-50%, -110%) scale(1.15); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(-50%, -260%) scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sf-overlay,
+  .sf-win.pop,
+  .sf-grid.cascade .sf-card,
+  .sf-sell.ready {
+    animation: none;
+  }
+}
+
+/* --- Portrait phones: sort buttons in a row above a taller grid -------------------- */
+@media (max-aspect-ratio: 4/5) {
+  .sf-overlay {
+    --dw: 600;
+    --dh: 860;
+  }
+  .sf-titlebar h2 {
+    font-size: calc(50 * var(--u));
+  }
+  .sf-main {
+    flex-direction: column;
+  }
+  .sf-side {
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: calc(10 * var(--u));
+    gap: calc(10 * var(--u));
+  }
+  .sf-sortby {
+    width: 100%;
+    text-align: center;
+    margin: 0;
+  }
+  .sf-rule {
+    display: none;
+  }
+  .sf-btn {
+    width: calc(172 * var(--u));
+    height: calc(64 * var(--u));
+  }
+  .sf-total-label {
+    font-size: calc(32 * var(--u));
+  }
+  .sf-foot > .sf-cash {
+    width: calc(60 * var(--u));
+    height: calc(48 * var(--u));
+    margin-left: calc(14 * var(--u));
+  }
+  .sf-total {
+    font-size: calc(36 * var(--u));
+  }
+  .sf-sell {
+    width: calc(150 * var(--u));
+  }
+}

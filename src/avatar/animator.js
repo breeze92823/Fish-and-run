@@ -5,7 +5,7 @@
 // stay planted at any speed. Writes only to bones and the avatar root's
 // rotation / position.y (the player group owns world placement).
 import { ANIM } from '../config.js'
-import { PlayerRig, PoseBuffer } from './rig.js'
+import { BONE_INDEX, PlayerRig, PoseBuffer } from './rig.js'
 
 const TAU = Math.PI * 2
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v)
@@ -44,6 +44,38 @@ class PlayerAnimator {
     this.idleTime = 0
     this.airTime = 0
     this.bank = 0
+    // Upper-body overlay (casting, reeling, holding a fish overhead): bone -> {x,y,z},
+    // blended over whatever the locomotion pose is, eased in and out.
+    this.overlay = null
+    this.overlayWeight = 0
+    this.overlayRate = 10
+  }
+
+  // def: { Bone: { x, y, z } } (character space, like ANIM poses) or null to ease out.
+  setOverlay(def, rate = 10) {
+    if (def) this.overlay = def
+    this.overlayTarget = def ? 1 : 0
+    this.overlayRate = rate
+  }
+
+  applyOverlay(dt) {
+    const goal = this.overlayTarget ?? 0
+    this.overlayWeight += (goal - this.overlayWeight) * (1 - Math.exp(-this.overlayRate * dt))
+    if (this.overlayWeight < 0.002 && goal === 0) {
+      this.overlay = null
+      return
+    }
+    if (!this.overlay) return
+    const v = this.output.rotations
+    const w = this.overlayWeight
+    for (const name in this.overlay) {
+      const i = BONE_INDEX[name] * 3
+      if (!(i >= 0)) continue
+      const r = this.overlay[name]
+      v[i] += ((r.x ?? 0) - v[i]) * w
+      v[i + 1] += ((r.y ?? 0) - v[i + 1]) * w
+      v[i + 2] += ((r.z ?? 0) - v[i + 2]) * w
+    }
   }
 
   dispose() {
@@ -59,6 +91,7 @@ class PlayerAnimator {
     this.resolveState(dt, input)
     this.writePose(dt, input)
     this.blend(dt)
+    this.applyOverlay(dt)
     this.rig.applyPose(this.output)
     this.applyVisual(dt, input)
   }

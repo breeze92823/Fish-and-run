@@ -13,6 +13,15 @@
         "development"
       ],
       "port": 5173
+    },
+    {
+      "name": "fish-trails",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set VITE_DEV_MODE=true&& npx vite --port 5261 --strictPort --mode development"
+      ],
+      "port": 5261
     }
   ]
 }
