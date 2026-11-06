@@ -137,12 +137,6 @@
   height: var(--jump);
   font-size: clamp(14px, 3.8vmin, 18px);
 }
-.touch-btn.sprint {
-  left: 0;
-  bottom: calc((var(--jump) - var(--side)) / 2);
-  width: var(--side);
-  height: var(--side);
-}
 .touch-btn.mode {
   top: 0;
   right: calc((var(--jump) - var(--side)) / 2);

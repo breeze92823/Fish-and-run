@@ -2,13 +2,13 @@
 // mouse look while pointer-locked (click grabs, Esc releases; drag where it is
 // refused or not yet granted) and wheel
 // zoom (consumed by camera.js), edge-triggered actions cleared by their consumer.
-// Touch controls (touch.js) write look/zoom/jump directly and move/sprint via
-// setTouchMove/setTouchSprint, which are merged with the keys here.
+// Touch controls (touch.js) write look/zoom/jump directly and move via
+// setTouchMove, which is merged with the keys here. The player always runs.
 export const inputState = {
   move: { x: 0, z: 0 }, // x = strafe (+ right), z = forward (+ forward)
   look: { dx: 0, dy: 0 }, // raw pixels since the camera last read them
   zoom: 0, // wheel notches since the camera last read them (+ = away)
-  sprint: false,
+  sprint: true, // always running: there is no walk / sprint key
   jump: false, // edge: cleared by player.js
 }
 
@@ -20,7 +20,7 @@ const held = new Set()
 const keyActions = new Map() // code -> fn, for one-shot keys (mode toggle, day/night...)
 let orbiting = false // right-drag fallback where pointer lock is refused
 let canvas = null
-const touch = { x: 0, z: 0, sprint: false }
+const touch = { x: 0, z: 0 }
 
 export const isLocked = () => !!canvas && document.pointerLockElement === canvas
 // Pointer lock can reject (sandboxed frame, post-Escape cooldown); that is not a fault.
@@ -44,18 +44,12 @@ function recomputeMove() {
   if (held.has('KeyA') || held.has('ArrowLeft')) x -= 1
   inputState.move.x = Math.max(-1, Math.min(1, x + touch.x))
   inputState.move.z = Math.max(-1, Math.min(1, z + touch.z))
-  inputState.sprint = held.has('ShiftLeft') || held.has('ShiftRight') || touch.sprint
 }
 
 // Joystick vector, each axis -1..1 (analog: a half tilt walks at half speed).
 export function setTouchMove(x, z) {
   touch.x = x
   touch.z = z
-  recomputeMove()
-}
-
-export function setTouchSprint(on) {
-  touch.sprint = on
   recomputeMove()
 }
 

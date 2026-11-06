@@ -564,7 +564,7 @@ export const PHYSICS = {
   fixedStep: 1 / 60, // s per physics tick; rendering interpolates between ticks
   maxSubSteps: 5, // a long frame never runs more ticks than this
   walkSpeed: 8, // m/s
-  sprintSpeed: 14, // m/s with Shift held
+  sprintSpeed: 14, // m/s: the player always runs at this (no walk / sprint key)
   accel: 70, // m/s^2 toward the target velocity on the ground
   airAccel: 22, // m/s^2 steering while airborne
   decel: 60, // m/s^2 when no key is held

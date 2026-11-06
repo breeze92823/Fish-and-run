@@ -3,10 +3,10 @@
 // they are using). Everything feeds inputState via input.js:
 //   left zone   - floating joystick (appears under the thumb) -> move, analog
 //   right zone  - one-finger drag -> look, two-finger pinch -> zoom
-//   buttons     - jump, sprint (toggle), camera mode, plus day-night/respawn
+//   buttons     - jump, camera mode, plus day-night/respawn
 import './touch.css'
 import { COARSE_POINTER, TOUCH } from './config.js'
-import { inputState, requestLock, setTouchMove, setTouchSprint } from './input.js'
+import { inputState, requestLock, setTouchMove } from './input.js'
 
 const ICONS = {
   day: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>',
@@ -156,15 +156,9 @@ export function installTouch(actions) {
     button('small', ICONS.respawn, actions.respawn),
   )
 
-  let sprinting = false
   const cluster = el('div', 'touch-cluster')
   cluster.append(
     button('mode', 'CAM', actions.mode),
-    button('sprint', 'RUN', (b) => {
-      sprinting = !sprinting
-      b.classList.toggle('on', sprinting)
-      setTouchSprint(sprinting)
-    }),
     button('jump', 'JUMP', () => {
       inputState.jump = true
     }),
