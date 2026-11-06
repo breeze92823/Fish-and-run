@@ -298,14 +298,9 @@ export function createHud({ onAction = () => {} } = {}) {
   })
   pack.append(bar, slotsRow)
 
-  // Bottom right: next event.
-  const event = el('div', 'hud-block hud-event')
-  const eventText = ot('hud-event-text', 'Next event in 30:00', true)
-  event.append(eventText.el, icon('hud-scroll', I.scroll))
-
   const toastEl = el('div', 'hud-toast')
 
-  root.append(earn, update, tiles, offer, fishTile, leftStack, pack, event, toastEl)
+  root.append(earn, update, tiles, offer, fishTile, leftStack, pack, toastEl)
   document.body.appendChild(root)
 
   // --- State setters ------------------------------------------------------------
@@ -433,14 +428,11 @@ export function createHud({ onAction = () => {} } = {}) {
     if (sec === lastSec) return
     lastSec = sec
     updateText.set(' IN ' + formatCountdown(Math.max(0, Math.ceil((updateAtMs - now) / 1000))))
-    const left = eventPeriodS - (sec % eventPeriodS)
-    eventText.set(`Next event in ${pad2(Math.floor(left / 3600))}:${pad2(Math.floor((left % 3600) / 60))}:${pad2(left % 60)}`)
   }
   // The server's schedule { eventEveryMs, updateAt, serverTime }: both countdowns follow its clock.
   function setSchedule(sc) {
     if (!sc) return
     if (Number.isFinite(sc.serverTime)) clockOffset = sc.serverTime - Date.now()
-    if (sc.eventEveryMs >= 1000) eventPeriodS = Math.floor(sc.eventEveryMs / 1000)
     if (Number.isFinite(sc.updateAt)) updateAtMs = sc.updateAt
     lastSec = -1
     tickClock()
@@ -449,7 +441,6 @@ export function createHud({ onAction = () => {} } = {}) {
   // --- Layout ---------------------------------------------------------------------
   const flow = [
     { el: pack, anchor: 'center', dir: 'up' },
-    { el: event, anchor: 'right', dir: 'up' },
     { el: earn, anchor: 'center', dir: 'down', minScale: 0.72 },
     { el: offer, anchor: 'right', dir: 'down' },
     { el: update, anchor: 'left', dir: 'down' },
@@ -458,7 +449,9 @@ export function createHud({ onAction = () => {} } = {}) {
     { el: leftStack, anchor: 'left', dir: 'up' },
   ]
   const DEFAULT_ORDER = flow.map((_, i) => i)
-  const LAND_ORDER = [0, 1, 2, 3, 5, 4, 6, 7] // tiles before update
+  // Tiles before update (built from the elements so it stays in step with `flow`).
+  const LAND_ORDER = DEFAULT_ORDER.filter((i) => flow[i].el !== update)
+  LAND_ORDER.splice(LAND_ORDER.indexOf(flow.findIndex((b) => b.el === tiles)) + 1, 0, flow.findIndex((b) => b.el === update))
   let reserved = []
   let offerCache = null
   let layoutQueued = false

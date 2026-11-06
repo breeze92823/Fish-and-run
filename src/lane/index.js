@@ -82,7 +82,7 @@ export function buildLane(scene, ctx) {
   const allRivers = zones.flatMap((zn) => zn.rivers.map((river) => ({ zn, river })))
   // Build every zone's fish models in idle time, nearest zones first.
   prewarmFish(ZONES.flatMap((zone) => zone.fish.map(([id]) => id)))
-  const VISIBLE = 230 // m from a zone's centre within which it is drawn
+  const VISIBLE = 70 // m from a zone's centre within which it is drawn
 
   // --- Line + bobber ---
   const SEG = 24

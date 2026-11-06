@@ -48,7 +48,7 @@ export const NET = {
   predictMax: 0.25, // s of dead reckoning
   maxRemotes: 8, // drawn at once (plots = room size, minus you)
   maxRemotesTouch: 6,
-  remoteFade: 260, // m: farther players are hidden
+  remoteFade: 50, // m: farther players are hidden
   plotFish: 12, // most fish a plot snapshot lists (the pool swims these)
 }
 
@@ -579,7 +579,7 @@ export const PLAYER_DIMS = { radius: 0.75, height: 1.8 } // capsule the characte
 
 // --- Look ------------------------------------------------------------------
 export const RENDER = { exposure: 1.0, toneMapping: 'neutral' } // neutral keeps the toy colours saturated (ACES greys them)
-export const FOG = { near: 220, far: 700 }
+export const FOG = { near: 100, far: 240 } // fully fogged by `far`, so anything past it can be culled (camera far, lane VISIBLE)
 // The two lighting moods lighting.js blends between (key N toggles).
 export const TIME_OF_DAY = {
   transition: 2.5, // s to blend day <-> night
@@ -671,7 +671,7 @@ export const TOUCH = {
 export const CAMERA = {
   fov: 70,
   near: 0.1,
-  far: 1200,
+  far: 1200, // must reach the sky dome (500) and clouds; fog + lane zone culling do the real draw-distance work
   startPitch: 0.24, // radians above the horizon
   minPitch: -0.35,
   maxPitch: 1.25,
