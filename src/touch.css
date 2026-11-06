@@ -107,7 +107,8 @@
 
 .touch-top {
   position: absolute;
-  top: calc(var(--safe-t) + var(--pad));
+  /* --resv-t: bottom of Boxity's reserved toolbar when it reaches this corner (touch.js). */
+  top: calc(max(var(--safe-t), var(--resv-t, 0px)) + var(--pad));
   right: calc(var(--safe-r) + var(--pad));
   display: flex;
   gap: 10px;
@@ -115,6 +116,13 @@
 .touch-btn.small {
   width: 44px;
   height: 44px;
+}
+/* Very narrow phones: stack them down the right edge so they fit beside Boxity's
+   chat panel instead of being pushed under it. */
+@media (max-width: 359px) {
+  .touch-top {
+    flex-direction: column;
+  }
 }
 
 /* Thumb arc in the bottom-right corner: jump biggest and closest to the thumb. */

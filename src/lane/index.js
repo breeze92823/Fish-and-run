@@ -1,12 +1,13 @@
 import { BufferGeometry, Float32BufferAttribute, Group, Line, LineBasicMaterial, Mesh, MeshStandardMaterial, SphereGeometry, Vector3 } from 'three'
 import { BAT, FISH, FISHING, GUARD, HUB, KNOCKBACK, LANE, ROD_LUCK_POWER, ZONE_BANNER, ZONES } from '../config.js'
 import { equippedRod } from '../rods/state.js'
-import { formatSpeed, guardSpeed, speedStat } from '../speed.js'
+import { formatSpeed, guardSpeed, runSpeed, speedStat } from '../speed.js'
 import { player, resetPlayer } from '../player.js'
 import { fishMesh, prewarmFish } from '../hub/fish.js'
 import { rodTip, setToolVisible } from '../tools.js'
 import { getYaw } from '../camera.js'
 import { sfx } from '../audio/index.js'
+import { ZONE_SURFACE } from '../audio/steps.js'
 import { createGuard } from './guard.js'
 import { buildForest, updateRivers } from './scenery.js'
 import { buildThemedZone } from './themes.js'
@@ -67,14 +68,15 @@ export function buildLane(scene, ctx) {
     root.add(group)
     const built = zone.id === 'forest' ? buildForest(group, zone) : buildThemedZone(group, zone)
     const range = { minZ: zone.end - GUARD.gateDepth, maxZ: zone.start - 1.5 }
-    const guard = createGuard(group, fx, zone.guard, range, guardSpeed(zone))
+    const chaseSpeed = guardSpeed(zone)
+    const guard = createGuard(group, fx, zone.guard, range, chaseSpeed)
     // The gate: from `approach` m before the zone's end (but north of every bank the rod
     // can be cast from, so fishing never sets it off) to `gateDepth` m into the next zone.
     const gate = {
       from: Math.min(zone.end + GUARD.approach, ...built.rivers.map((r) => r.z - r.half - LANE.river.curbWidth - FISHING.reach)),
       to: zone.end - GUARD.gateDepth,
     }
-    return { zone, index, group, built, rivers: built.rivers, guard, range, gate, groundAt: built.groundAt ?? (() => 0), centre: (zone.start + zone.end) / 2, name: zone.guard.kind.charAt(0).toUpperCase() + zone.guard.kind.slice(1) }
+    return { zone, index, group, built, rivers: built.rivers, guard, chaseSpeed, range, gate, groundAt: built.groundAt ?? (() => 0), centre: (zone.start + zone.end) / 2, name: zone.guard.kind.charAt(0).toUpperCase() + zone.guard.kind.slice(1) }
   })
   const allRivers = zones.flatMap((zn) => zn.rivers.map((river) => ({ zn, river })))
   // Build every zone's fish models in idle time, nearest zones first.
@@ -138,8 +140,7 @@ export function buildLane(scene, ctx) {
   let warned = false // the "Don't stop!" warning is showing
   let wasChased = false // a guard was after you last frame
   let quietEnd = false // the chase ended by a catch or a delivery this frame (no "escaped" chime)
-  const roared = new Set() // guards whose current chase has roared
-  const stepT = new Map() // guard -> s to its next footfall
+  const voiceState = new Map() // guard -> { roared, stride (s to next stride), snarl (s to next growl), huff }
 
   const anim = () => ctx.getAnimator()
   const setPose = (p, rate) => anim()?.setOverlay(p, rate)
@@ -253,7 +254,9 @@ export function buildLane(scene, ctx) {
   function knockedDown(zn) {
     const hadFish = !!carried
     quietEnd = true
-    sfx.guardCaught(hadFish)
+    sfx.guardAttack(zn.guard.kind, hadFish)
+    const vs = voiceState.get(zn.guard)
+    if (vs) vs.huff = 1.3 // it huffs as it turns back
     const fishPos = carried ? carried.getWorldPosition(new Vector3()) : player.renderPosition
     fx.burst(fishPos, { kind: 'glow', count: 16, color: '#ffffff', speed: 4, up: 4, size: 0.35, life: 0.7, gravity: 10 })
     if (mode === 'cast' || mode === 'wait' || mode === 'reel') endFishing()
@@ -344,25 +347,38 @@ export function buildLane(scene, ctx) {
     return { near: Math.max(0, 1 - d / HEAR) ** 1.4, pan }
   }
 
-  // A guard roars as its chase starts and thuds after you while it runs.
+  // A guard roars as its chase starts (you gasp if you're carrying), then runs at you stride by
+  // stride on its zone's ground, panting, and growls now and then; after a catch it huffs.
   function guardSounds(zn, dt) {
     const g = zn.guard
+    let vs = voiceState.get(g)
+    if (!vs) voiceState.set(g, (vs = { roared: false, stride: 0, snarl: 0, huff: 0 }))
+    if (vs.huff > 0 && (vs.huff -= dt) <= 0) {
+      const h = hearing(g.position)
+      sfx.guardHuff(g.kind, h.near, h.pan)
+    }
     if (!g.chasing) {
-      roared.delete(g)
+      vs.roared = false
       return
     }
-    if (!roared.has(g)) {
-      roared.add(g)
+    if (!vs.roared) {
+      vs.roared = true
       const h = hearing(g.position)
       sfx.guardRoar(g.kind, Math.max(0.35, h.near), h.pan)
-      stepT.set(g, 0.5)
+      if (mode === 'carry') sfx.playerGasp()
+      vs.stride = 0.3
+      vs.snarl = 2 + Math.random() * 1.5
     }
     if (g.state !== 'chase') return
-    const left = (stepT.get(g) ?? 0) - dt
-    if (left > 0) return stepT.set(g, left)
-    stepT.set(g, g.kind === 'phoenix' ? 0.32 : 0.26)
-    const h = hearing(g.position)
-    sfx.guardStep(g.kind, h.near, h.pan)
+    if ((vs.stride -= dt) <= 0) {
+      const h = hearing(g.position)
+      vs.stride += sfx.guardStride(g.kind, ZONE_SURFACE[zn.zone.id] ?? 'dirt', h.near, h.pan)
+    }
+    if ((vs.snarl -= dt) <= 0) {
+      vs.snarl = 1.8 + Math.random() * 1.6
+      const h = hearing(g.position)
+      sfx.guardSnarl(g.kind, h.near, h.pan)
+    }
   }
 
   function reset() {
@@ -386,6 +402,11 @@ export function buildLane(scene, ctx) {
     // The species held overhead on the run home, or null.
     get carrying() {
       return mode === 'carry' ? species : null
+    },
+    // What the player is standing on (footstep sounds): the zone's ground, the hub's grass.
+    get surface() {
+      const z = zoneAt(player.position.z)
+      return z ? ZONE_SURFACE[z.id] ?? 'dirt' : 'grass'
     },
     // Free to swing the bat: not fishing, carrying, flying or lying down.
     get canSwing() {
@@ -529,6 +550,7 @@ export function buildLane(scene, ctx) {
         const chased = zones.some((zn) => zn.guard.chasing)
         const speed = Math.hypot(player.velocity.x, player.velocity.z)
         setWarn(chased && speed < 4 && t > 1)
+        sfx.carryUpdate(dt, chased, speed)
         if (p.z > 0.6) deliver()
       } else if (mode === 'thrown') {
         const F = knock.flight
@@ -563,13 +585,18 @@ export function buildLane(scene, ctx) {
       // Guards: while a fish is carried only the guard of the zone it was caught in
       // chases (through its own zone); otherwise each guard chases anyone reaching the
       // end part of its zone (the gate). A catch knocks them back to the start of the
-      // guard's zone.
+      // guard's zone. Below a zone's recommended speed its guard always outruns you
+      // (GUARD.overtake x your run speed) and a gate chase has no end: you must train to pass.
       let chased = false
       let closest = Infinity
+      const stat = speedStat()
+      const myRun = runSpeed(stat, true)
       for (const zn of zones) {
+        const under = stat < (zn.zone.speed ?? 1)
+        zn.guard.setChase(under ? Math.max(zn.chaseSpeed, myRun * GUARD.overtake) : zn.chaseSpeed, under && mode !== 'carry')
         let want = false
         if (mode === 'carry') want = zn === current && p.z <= zn.zone.start + 1 && p.z >= zn.range.minZ
-        else if (mode !== 'thrown') want = p.z < zn.gate.from && p.z > zn.gate.to
+        else if (mode !== 'thrown') want = p.z < zn.gate.from && (p.z > zn.gate.to || (under && zn.guard.chasing))
         if (want) zn.guard.chase()
         else zn.guard.giveUp()
         if (!zn.group.visible && !zn.guard.chasing) continue

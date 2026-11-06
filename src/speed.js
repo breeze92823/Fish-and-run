@@ -36,8 +36,12 @@ export function startBoost(seconds) {
   boostTimer = setTimeout(emit, boostLeft() * 1000 + 50)
   emit()
 }
+// The multiplier on trained speed: trail x boost (x1 with neither).
+export const speedMult = () => trailSpeed() * (boostLeft() > 0 ? SPEED_BOOST.mult : 1)
 // The stat everything compares: trained x trail x boost.
-export const speedStat = () => trained * trailSpeed() * (boostLeft() > 0 ? SPEED_BOOST.mult : 1)
+export const speedStat = () => trained * speedMult()
+// x1 / x1.25 / x2.5 (the HUD's multiplier row).
+export const formatMult = (m) => `x${+m.toFixed(2)}`
 
 // m/s for a speed stat: the base walk / sprint grows by the same step per power of ten.
 export function runSpeed(stat, sprint = false) {
@@ -47,10 +51,11 @@ export function runSpeed(stat, sprint = false) {
 // A zone guard sprints a little slower than a player sprinting at the zone's recommended speed.
 export const guardSpeed = (zone) => runSpeed(zone.speed ?? 1, true) * SPEED.chaseFactor
 
-// 1.25 / 24 / 1.2K / 3.4M (whole numbers from 10 up, short units from 1K).
+// A speed stat as the player sees it (x SPEED.display): 12.5 / 240 / 1.2K / 3.4M (whole numbers from
+// 10 up, short units from 1K).
 const UNITS = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi']
 export function formatSpeed(n) {
-  n = Math.max(0, +n || 0)
+  n = Math.max(0, +n || 0) * SPEED.display
   if (n < 10) return String(Math.floor(n * 100) / 100)
   let u = 0
   while (n >= 1000 && u < UNITS.length - 1) {

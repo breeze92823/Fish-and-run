@@ -1,5 +1,5 @@
 import { ACESFilmicToneMapping, Clock, NeutralToneMapping, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
-import { CAMERA, ECONOMY, FISH, graphicsPreset, MY_PLOT, NET, OFFER_ROTATE, OFFERS, RENDER, SPEED_BOOST, TIME_OF_DAY } from './config.js'
+import { CAMERA, ECONOMY, FISH, graphicsPreset, MY_PLOT, NET, OFFER_ROTATE, OFFERS, RENDER, SPEED, SPEED_BOOST, TIME_OF_DAY } from './config.js'
 import * as bloxity from './bloxity.js'
 import { install as installInput, onKey } from './input.js'
 import { installAudio, sfx } from './audio/index.js'
@@ -10,7 +10,7 @@ import { equippedRodId, onRodsChange } from './rods/state.js'
 import { rodThumb } from './rods/thumbs.js'
 import { closeTrails, openTrails } from './trails/window.js'
 import { equippedTrail, equippedTrailId, hydrateTrails, onTrailsChange, snapshotTrails } from './trails/state.js'
-import { boostLeft, formatSpeed, onSpeedChange, speedStat, startBoost } from './speed.js'
+import { boostLeft, formatMult, onSpeedChange, speedMult, speedStat, startBoost, trainedSpeed } from './speed.js'
 import { createTreadmill } from './hub/treadmill.js'
 import { createBase } from './hub/base.js'
 import { createFishPlacer } from './hub/placeFish.js'
@@ -110,8 +110,6 @@ hud.toast = (msg) => {
   rawToast(msg)
 }
 onNetMessage('schedule', (sc) => hud.setSchedule(sc)) // server clock for the Update / Next event countdowns
-hud.setGems(inventory.gems)
-onInventory(() => hud.setGems(inventory.gems))
 hud.setEquipped(1)
 
 const scene = new Scene()
@@ -245,13 +243,15 @@ syncRodIcon()
 onInventory(refreshHotbar)
 onActiveFishChanged(refreshHotbar)
 refreshHotbar()
-// The speed stat (trained on the treadmill x the trail) sets run speed; the HUD shows it.
-let shownStat = 0
+// The speed stat (trained on the treadmill x the multiplier) sets run speed. The HUD shows the
+// trained speed (shoe row, x SPEED.display: 10 at start) and the multiplier (bolt row, x1 at start).
+let shownMult = 0
 function syncSpeed() {
-  const stat = speedStat()
-  player.speedStat = stat
-  hud.setSpeed(formatSpeed(stat), stat > shownStat && shownStat > 0)
-  shownStat = stat
+  player.speedStat = speedStat()
+  hud.setTrainedSpeed(trainedSpeed() * SPEED.display)
+  const mult = speedMult()
+  hud.setSpeedMult(formatMult(mult), mult > shownMult && shownMult > 0)
+  shownMult = mult
 }
 onSpeedChange(syncSpeed)
 syncSpeed()
@@ -472,7 +472,7 @@ function moveSounds(dt, wasGrounded, fallSpeed) {
   if (stepIn > 0) return
   // Strides get quicker with speed but level off (a fast runner takes longer strides).
   stepIn = Math.max(0.2, 0.62 - Math.log10(1 + speed) * 0.3)
-  sfx.footstep(speed)
+  sfx.footstep(speed, lane.surface)
 }
 
 // --- Loop -------------------------------------------------------------------

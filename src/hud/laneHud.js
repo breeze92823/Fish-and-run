@@ -90,18 +90,50 @@ export function createLaneHud(hudRoot, { onCast, onStop, onClick, onSwing }) {
   let bannerTimer = 0
   let runTimer = 0
   // The Cast button, bar and warning sit just above the backpack wherever the HUD's
-  // layout put it (phones size the hotbar in px), re-measured twice a second.
+  // layout put it (phones size the hotbar in px), re-measured twice a second. On
+  // narrow (portrait) screens the HUD stacks the event timer and the cash column
+  // beside / above the backpack, so each piece also clears every bottom HUD block
+  // its own width would cross: --lane-bottom for the buttons (Cast, Swing, action),
+  // --lane-bottom-wide for the Click Fast bar and the warning.
   let measureIn = 0
-  let lastBottom = -1
+  let lastNarrow = -1
+  let lastWide = -1
+  const BOTTOM_BLOCKS = '.hud-pack, .hud-event, .hud-left'
+  function liftOver(rects, width, vw, vh) {
+    const l = (vw - width) / 2 - 4
+    const r = (vw + width) / 2 + 4
+    let top = vh
+    for (const b of rects) if (b.right > l && b.left < r) top = Math.min(top, b.top)
+    return Math.round(vh - top + 6)
+  }
   function anchor() {
-    const pack = hudRoot.querySelector('.hud-pack')
-    if (!pack) return
-    const bottom = Math.round(window.innerHeight - pack.getBoundingClientRect().top + 6)
-    if (bottom !== lastBottom) {
-      lastBottom = bottom
-      root.style.setProperty('--lane-bottom', `${bottom}px`)
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const rects = []
+    for (const b of hudRoot.querySelectorAll(BOTTOM_BLOCKS)) {
+      const r = b.getBoundingClientRect()
+      if (r.width > 0 && r.top > vh * 0.4) rects.push(r)
+    }
+    if (!rects.length) return
+    const narrow = liftOver(rects, Math.max(cast.offsetWidth, swing.offsetWidth, act.offsetWidth), vw, vh)
+    const wide = liftOver(rects, Math.max(clicker.offsetWidth + 2 * Math.abs(clickerShift()), warn.offsetWidth), vw, vh)
+    if (narrow !== lastNarrow) {
+      lastNarrow = narrow
+      root.style.setProperty('--lane-bottom', `${narrow}px`)
+    }
+    if (wide !== lastWide) {
+      lastWide = wide
+      root.style.setProperty('--lane-bottom-wide', `${wide}px`)
     }
   }
+  // The Click Fast bar is nudged right by its Stop button (see .lane-clicker).
+  const clickerShift = () => parseFloat(getComputedStyle(hudRoot).getPropertyValue('--u')) * 37 || 0
+  // Re-measure as soon as the HUD lays itself out again (rotation, resize).
+  const remeasure = () => {
+    measureIn = 0
+  }
+  window.addEventListener('resize', remeasure)
+  window.visualViewport?.addEventListener('resize', remeasure)
   const show = (e, on) => e.classList.toggle('on', on)
 
   return {

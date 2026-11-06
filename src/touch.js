@@ -7,6 +7,7 @@
 import './touch.css'
 import { COARSE_POINTER, TOUCH } from './config.js'
 import { inputState, requestLock, setTouchMove } from './input.js'
+import { onReservedAreas } from './bloxity.js'
 
 const ICONS = {
   day: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>',
@@ -167,6 +168,25 @@ export function installTouch(actions) {
   cluster.querySelector('.jump').dataset.sfx = 'off' // the jump makes its own whoosh (sfx.jump)
   root.append(left, right, top, cluster)
   document.body.appendChild(root)
+
+  // Boxity's toolbar spans the whole top edge on narrow phones: keep the top-right
+  // buttons under any reserved area that reaches their corner.
+  let reserved = []
+  const clearReserved = () => {
+    const vw = window.innerWidth
+    const from = vw - top.offsetWidth - 16 // the buttons' strip plus a margin
+    let below = 0
+    for (const a of reserved) {
+      if (!(a.width > 0 && a.height > 0)) continue
+      if (a.left + a.width > from && a.top < 120) below = Math.max(below, a.top + a.height)
+    }
+    root.style.setProperty('--resv-t', `${Math.round(below)}px`)
+  }
+  onReservedAreas((areas) => {
+    reserved = areas
+    clearReserved()
+  })
+  window.addEventListener('resize', clearReserved)
 
   setVisible(COARSE_POINTER)
   // Whatever the player last used decides which controls are on screen.

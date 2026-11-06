@@ -1,25 +1,22 @@
 // Gameplay sounds: fishing (cast, plop, bite, reel, landing a catch), the run home (RUN!,
 // the guards' roars, footfalls and the chase heartbeat, getting caught, escaping, delivering),
-// moving (footsteps, jump, land, respawn), the hotbar and the base / treadmill upgrades.
+// moving (footsteps, jump, land, respawn), the hotbar and the base / treadmill upgrades. The guards'
+// voices and bodies are in animals.js; the player's voice lines (played from here too) in playerSfx.js.
 // Synthesised like sfx.js (re-exported from there); silent before the first gesture, never throws.
 //
 // `near` 0..1 scales a sound heard from a distance (1 = right here), `pan` -1..1.
 import { COARSE_POINTER } from '../config.js'
 import { A, now, ready, voice } from './core.js'
 import { BELL, buzz, C6, COIN, GLOCK, glock, GONG, limit, MARIMBA, PENTA, PLASTIC, semi, WOOD } from './kit.js'
-import { bubble, bubbles, burst, crinkle, env, modal, rnd, route, saturation, tone, vary } from './synth.js'
+import { bubble, bubbles, burst, crinkle, env, modal, rnd, route, tone, vary } from './synth.js'
+import { footfall } from './steps.js'
+import { playerAww, playerCheer, playerEffort, playerHup, playerOof, playerStrain, playerUgh, playerWoohoo } from './playerSfx.js'
 
 const C5 = C6 / 2
 const TIER = { COMMON: 0, UNCOMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5, SECRET: 6 }
 const tierOf = (rarity) => TIER[rarity] ?? 0
 
 // --- Extra building blocks ---------------------------------------------------------------------
-const curves = new Map()
-const curve = (drive) => {
-  if (!curves.has(drive)) curves.set(drive, saturation(drive))
-  return curves.get(drive)
-}
-
 // A brassy chord stab: detuned saws through a lowpass that blooms open and settles (a horn swell).
 function brass(t, freqs, d, gain, { a = 0.03, hold = 0, bus = A.sfx, verb = 0.22, pan = 0, bright = 3200 } = {}) {
   const ctx = A.ctx
@@ -82,47 +79,6 @@ function glider(t, path, { type = 'sine', gain = 0.2, a = 0.02, d, vib = 0, vibD
   return end
 }
 
-// An animal growl: a sawtooth whose pitch is shaken fast (vocal-fold flutter), driven into
-// saturation and darkened, swelling and dying away.
-function growl(t, { f, glide, d, rate = 30, depth = 0.25, lp = 1200, gain = 0.3, pan = 0, verb = 0.25, a = 0.1, drive = 3 }) {
-  const ctx = A.ctx
-  const o = ctx.createOscillator()
-  o.type = 'sawtooth'
-  o.frequency.setValueAtTime(f, t)
-  o.frequency.linearRampToValueAtTime(f * 1.12, t + a + d * 0.25) // the roar lifts...
-  o.frequency.exponentialRampToValueAtTime(glide ?? f * 0.75, t + a + d) // ...and sinks away
-  const lfo = ctx.createOscillator()
-  lfo.type = 'triangle'
-  lfo.frequency.setValueAtTime(rate * rnd(0.9, 1.1), t)
-  const lg = ctx.createGain()
-  lg.gain.value = f * depth
-  lfo.connect(lg).connect(o.frequency)
-  const sh = ctx.createWaveShaper()
-  sh.curve = curve(drive)
-  const flt = ctx.createBiquadFilter()
-  flt.type = 'lowpass'
-  flt.Q.value = 2
-  flt.frequency.setValueAtTime(lp * 0.5, t)
-  flt.frequency.linearRampToValueAtTime(lp, t + a + d * 0.2)
-  flt.frequency.exponentialRampToValueAtTime(lp * 0.35, t + a + d)
-  const g = ctx.createGain()
-  const end = env(g.gain, t, a, gain, d * 0.65, d * 0.35)
-  o.connect(sh).connect(flt).connect(g)
-  o.start(t)
-  lfo.start(t)
-  o.stop(end + 0.05)
-  lfo.stop(end + 0.05)
-  route(g, { pan, verb })
-  return end
-}
-
-// Fire: a roaring lowpassed whoosh with crackles.
-function fire(t, d, gain, pan = 0) {
-  burst({ t, noise: 'pink', type: 'lowpass', f: 500, f2: 2600, q: 0.8, a: 0.12, d, gain, pan, verb: 0.2 })
-  burst({ t: t + 0.05, noise: 'brown', type: 'lowpass', f: 300, q: 0.7, a: 0.08, d: d * 0.8, gain: gain * 0.8, pan })
-  crinkle({ t: t + 0.05, n: COARSE_POINTER ? 6 : 12, dur: d, gain: gain * 0.25, f0: 1500, f1: 5000, width: 0.4 })
-}
-
 // A wet fish slap: fleshy thud, water smack, droplets.
 function slap(t, gain = 1, pan = 0) {
   tone({ t, f: vary(170, 0.08), f2: 70, d: 0.08, gain: 0.3 * gain, pan })
@@ -144,6 +100,7 @@ function splash(t, size = 1, gain = 1, pan = 0) {
 export function cast() {
   if (!limit('cast', 300) || !voice(0.9, 2)) return
   const t = now()
+  playerEffort(t)
   burst({ t, noise: 'pink', f: 500, f2: 3400, q: 1.3, a: 0.05, d: 0.16, sweep: 0.12, gain: 0.5 })
   burst({ t: t + 0.11, f: 5200, q: 0.8, a: 0.0006, d: 0.025, gain: 0.25, hp: 2500 }) // the whip of the tip
   burst({ t: t + 0.08, f: 7000, q: 2, a: 0.02, d: 0.45, gain: 0.05, hp: 4000 }) // line hissing off the spool
@@ -194,6 +151,7 @@ export function reelClick(progress = 0) {
   bubble({ t: t + rnd(0, 0.02), f: rnd(700, 1500), d: 0.03, gain: 0.06, rise: 0.5, pan: rnd(-0.4, 0.4) })
   const n = PENTA[Math.min(PENTA.length - 1, Math.floor(p * (PENTA.length - 1)))]
   modal({ t, f: C5 * semi(n), modes: MARIMBA, gain: 0.16 + p * 0.06, strike: 0.08, verb: 0.12 })
+  playerStrain()
 }
 
 // Stop / reeled in: the reel whirs the line back and the bobber pops out.
@@ -212,6 +170,7 @@ export function fishEscaped() {
   glider(t, [[0, 900], [0.3, 180]], { type: 'triangle', gain: 0.12, d: 0.35, lp: 2400 })
   bubble({ t: t + 0.05, f: 520, d: 0.14, gain: 0.25, rise: -0.5 })
   ;[7, 4, 0, -5].forEach((n, i) => modal({ t: t + 0.2 + i * 0.13, f: C5 * semi(n), modes: MARIMBA, gain: 0.16, strike: 0.05, verb: 0.15 }))
+  playerAww(t + 0.25)
 }
 
 // Landed! The fish bursts out of the water and whooshes through the air, then a reveal sting
@@ -223,6 +182,7 @@ export function fishLanded(rarity = 'COMMON') {
   splash(t, 1.4 + tier * 0.1, 1.1)
   burst({ t: t + 0.08, noise: 'pink', f: 400, f2: 2200, q: 1.1, a: 0.2, d: 0.35, gain: 0.32 }) // flying
   const s = t + 0.35
+  playerCheer(s + 0.05)
   const runs = [[0, 7], [0, 4, 7], [0, 4, 7, 12], [0, 4, 7, 12, 16], [0, 4, 7, 12, 16, 19], [0, 4, 7, 12, 16, 19, 24], [0, 4, 7, 11, 12, 16, 19, 23, 24]]
   glock(s, runs[tier], 0.06 - tier * 0.004, 0.13, 0.3)
   if (tier >= 2) brass(s + runs[tier].length * 0.05, [C5 / 2, C5 * semi(4) / 2, C5 * semi(7) / 2], 0.5 + tier * 0.1, 0.05 + tier * 0.006)
@@ -246,72 +206,6 @@ export function runStart() {
   brass(t + 0.1, [C5 * semi(-5), C5 * semi(-1), C5 * semi(2)], 0.12, 0.07, { a: 0.015 })
   brass(t + 0.26, [C5, C5 * semi(4), C5 * semi(7)], 0.42, 0.085, { a: 0.015, hold: 0.06, bright: 4200 })
   buzz([25, 30, 40])
-}
-
-// --- The guards --------------------------------------------------------------------------------
-// One voice per guard animal: growls for the big beasts (pitch = body size), a howl for the
-// wolf, a whinny for the unicorn, a screech for the phoenix, honks for the flamingo.
-const VOICES = {
-  bear: { kind: 'growl', f: 72, glide: 52, d: 0.95, rate: 27, lp: 950, breath: 420 },
-  tiger: { kind: 'growl', f: 108, glide: 68, d: 0.85, rate: 34, lp: 1500, breath: 700 },
-  lion: { kind: 'growl', f: 86, glide: 58, d: 1.15, rate: 25, lp: 1150, breath: 520 },
-  panther: { kind: 'growl', f: 138, glide: 92, d: 0.6, rate: 40, lp: 1900, breath: 1600, hiss: true },
-  ankylo: { kind: 'growl', f: 52, glide: 40, d: 1.05, rate: 18, lp: 700, breath: 300 },
-  dragon: { kind: 'growl', f: 58, glide: 38, d: 1.3, rate: 22, lp: 1000, breath: 380, fire: true },
-  wolf: { kind: 'howl' },
-  unicorn: { kind: 'whinny' },
-  phoenix: { kind: 'screech', fire: true },
-  flamingo: { kind: 'honk' },
-}
-const STEP = { bear: 1.1, tiger: 0.9, lion: 1, panther: 0.8, ankylo: 1.4, dragon: 1.5, wolf: 0.75, unicorn: 0.85, flamingo: 0.5, phoenix: 0 }
-
-// The guard spots you: its roar (heard from `near`, `pan`), with a low sub-boom under it.
-export function guardRoar(kind = 'bear', near = 1, pan = 0) {
-  if (near < 0.05 || !limit('roar', 500) || !voice(1.8, 4)) return
-  const v = VOICES[kind] ?? VOICES.bear
-  const t = now()
-  const g = Math.min(1, near)
-  if (v.kind === 'growl') {
-    growl(t, { f: v.f, glide: v.glide, d: v.d, rate: v.rate, lp: v.lp, gain: 0.32 * g, pan })
-    growl(t + 0.02, { f: v.f * 1.49, glide: v.glide * 1.49, d: v.d * 0.9, rate: v.rate * 1.3, lp: v.lp * 1.3, gain: 0.12 * g, pan, depth: 0.3 })
-    burst({ t, noise: 'pink', f: v.breath, q: 1.6, a: 0.1, hold: v.d * 0.3, d: v.d * 0.6, gain: 0.22 * g, pan, verb: 0.25 })
-    if (v.hiss) burst({ t, f: 5200, q: 1, a: 0.05, d: v.d * 0.8, gain: 0.12 * g, pan, hp: 3000 })
-    tone({ t, f: 55, f2: 35, a: 0.05, d: v.d * 0.8, gain: 0.25 * g, pan })
-    if (v.fire) fire(t + v.d * 0.5, 0.7, 0.3 * g, pan)
-  } else if (v.kind === 'howl') {
-    glider(t, [[0, 360], [0.35, 640], [1.0, 600], [1.4, 420]], { type: 'triangle', gain: 0.18 * g, a: 0.15, vib: 5.5, vibDepth: 14, lp: 2400, pan, verb: 0.45 })
-    glider(t, [[0, 720], [0.35, 1280], [1.0, 1200], [1.4, 840]], { type: 'sine', gain: 0.05 * g, a: 0.18, vib: 5.5, vibDepth: 28, pan, verb: 0.45 })
-    burst({ t, noise: 'pink', f: 900, q: 2, a: 0.15, hold: 0.6, d: 0.5, gain: 0.06 * g, pan, verb: 0.3 })
-  } else if (v.kind === 'whinny') {
-    glider(t, [[0, 900], [0.12, 1250], [0.7, 640], [0.9, 520]], { type: 'sawtooth', gain: 0.1 * g, a: 0.03, vib: 11, vibDepth: 70, lp: 2600, pan, verb: 0.3 })
-    glider(t, [[0, 1800], [0.12, 2500], [0.7, 1280]], { type: 'triangle', gain: 0.04 * g, a: 0.03, vib: 11, vibDepth: 140, pan, verb: 0.3 })
-    burst({ t: t + 0.85, noise: 'pink', type: 'lowpass', f: 1200, a: 0.01, d: 0.18, gain: 0.25 * g, pan }) // the snort
-    for (let i = 0; i < 3; i++) modal({ t: t + 0.95 + i * 0.09, f: C6 * semi([12, 16, 19][i]), modes: GLOCK, gain: 0.05 * g, pan, verb: 0.4 }) // sparkles
-  } else if (v.kind === 'screech') {
-    glider(t, [[0, 1500], [0.08, 2600], [0.7, 1100]], { type: 'sawtooth', gain: 0.07 * g, a: 0.02, vib: 32, vibDepth: 90, lp: 4200, pan, verb: 0.4 })
-    glider(t, [[0, 3000], [0.08, 5100], [0.7, 2200]], { type: 'sine', gain: 0.04 * g, a: 0.02, vib: 32, vibDepth: 180, pan, verb: 0.4 })
-    fire(t + 0.2, 0.8, 0.28 * g, pan)
-  } else {
-    // Honk honk!
-    for (const [at, f] of [[0, 430], [0.2, 400]]) {
-      glider(t + at, [[0, f * 1.05], [0.15, f]], { type: 'square', gain: 0.06 * g, a: 0.01, lp: 1600, pan, verb: 0.2 })
-      burst({ t: t + at, f: 1100, q: 3, a: 0.01, d: 0.14, gain: 0.08 * g, pan })
-    }
-  }
-}
-
-// A guard's footfall while it runs at you (wing beats for a flyer).
-export function guardStep(kind = 'bear', near = 1, pan = 0) {
-  if (near < 0.08 || !voice(0.25)) return
-  const t = now()
-  const w = STEP[kind] ?? 1
-  if (w === 0) {
-    burst({ t, noise: 'pink', f: 380, f2: 900, q: 0.9, a: 0.04, d: 0.12, gain: 0.25 * near, pan })
-    return
-  }
-  tone({ t, f: vary(110 / w, 0.08), f2: 38, d: 0.1 + w * 0.04, gain: 0.32 * near * Math.min(1.2, w), pan })
-  burst({ t, noise: 'brown', type: 'lowpass', f: 380, q: 0.7, a: 0.002, d: 0.1, gain: 0.25 * near * w, pan })
-  burst({ t, noise: 'pink', f: vary(1800, 0.2), q: 1, a: 0.001, d: 0.03, gain: 0.05 * near, pan })
 }
 
 // --- The chase: a heartbeat and a low tension drone, faster and brighter as the guard closes in.
@@ -370,32 +264,6 @@ export function chaseUpdate(dt, chased, near = 0) {
   }
 }
 
-// Caught! A swipe and a meaty smack, a slide whistle as you're flung through the air, cartoon
-// stars, and (if it took your catch) a sad trombone.
-export function guardCaught(lostFish = false) {
-  if (!limit('caught', 600) || !voice(2.2, 4)) return
-  const t = now()
-  burst({ t, noise: 'pink', f: 300, f2: 2800, q: 1.2, a: 0.06, d: 0.1, gain: 0.45 })
-  const hit = t + 0.08
-  tone({ t: hit, f: 170, f2: 42, d: 0.22, gain: 0.7 })
-  burst({ t: hit, noise: 'brown', type: 'lowpass', f: 900, d: 0.16, gain: 0.55 })
-  burst({ t: hit, f: 2600, q: 0.6, a: 0.0005, d: 0.04, gain: 0.45, hp: 1000 })
-  modal({ t: hit, f: vary(260, 0.04), modes: WOOD, gain: 0.45, strike: 0.4, verb: 0.15 })
-  glider(hit + 0.05, [[0, 500], [0.4, 1500], [0.95, 380]], { type: 'sine', gain: 0.13, a: 0.03, vib: 7, vibDepth: 18, lp: 3200, verb: 0.2 })
-  glock(hit + 0.2, [19, 16, 24, 19], 0.07, 0.06, 0.35)
-  if (lostFish) {
-    const wah = (at, f, d = 0.34) => {
-      glider(at, [[0, f], [d, f * 0.95]], { type: 'sawtooth', gain: 0.075, a: 0.04, d, vib: 5, vibDepth: 4, lp: 950 })
-      glider(at, [[0, f / 2], [d, f * 0.47]], { type: 'square', gain: 0.035, a: 0.04, d, lp: 700 })
-    }
-    wah(hit + 0.9, 311)
-    wah(hit + 1.22, 294)
-    wah(hit + 1.54, 277)
-    wah(hit + 1.86, 262, 0.8)
-  }
-  buzz([60, 40, 80])
-}
-
 // You hit the ground after being thrown: a heavy thud and a puff of dust.
 export function thrownLand() {
   if (!limit('tland', 300) || !voice(0.5, 2)) return
@@ -403,15 +271,17 @@ export function thrownLand() {
   tone({ t, f: 120, f2: 40, d: 0.2, gain: 0.55 })
   burst({ t, noise: 'brown', type: 'lowpass', f: 500, d: 0.2, gain: 0.45 })
   burst({ t: t + 0.02, noise: 'pink', type: 'lowpass', f: 1600, f2: 400, a: 0.02, d: 0.35, gain: 0.12 })
+  playerOof()
   buzz(40)
 }
 
-// Back on your feet: a springy little "hup".
+// Back on your feet: an "ugh" and the rustle of getting up.
 export function getUp() {
   if (!limit('getup', 400) || !voice(0.3)) return
   const t = now()
-  glider(t, [[0, 280], [0.14, 620]], { type: 'triangle', gain: 0.07, a: 0.01, d: 0.16, lp: 2000 })
-  burst({ t, noise: 'pink', f: 500, f2: 1600, q: 0.9, a: 0.03, d: 0.1, gain: 0.1 })
+  playerUgh()
+  burst({ t, noise: 'pink', f: 500, f2: 1600, q: 0.9, a: 0.05, d: 0.18, gain: 0.08 })
+  crinkle({ t, n: 4, dur: 0.2, gain: 0.03, f0: 1500, f1: 4000 })
 }
 
 // The guard gave up: you got away! A relieved whoosh and a bright major chime.
@@ -448,6 +318,7 @@ export function deliver(rarity = 'COMMON') {
   }
   crinkle({ t: t + 0.3, n: COARSE_POINTER ? 8 : 16, dur: 0.8, gain: 0.03, f0: 4000, f1: 10000 })
   if (tier >= 4) modal({ t: t + 0.26, f: 220, modes: GONG, gain: 0.14, strike: 0.2, verb: 0.5 })
+  playerWoohoo(t + 0.3)
   buzz([30, 40, 30, 40, 60])
 }
 
@@ -468,26 +339,23 @@ export function zoneEnter(index = 0, low = false) {
 
 // --- Moving ------------------------------------------------------------------------------------
 let stepSide = 1
-// A soft footstep (call per step); `speed` m/s makes it a touch firmer.
-export function footstep(speed = 5) {
+// One footstep of yours (call per step) on `surface` (steps.js ZONE_SURFACE; the hub is grass);
+// `speed` m/s makes it a touch firmer.
+export function footstep(speed = 5, surface = 'grass') {
   if (!voice(0.15)) return
-  const t = now()
-  const k = Math.min(1, speed / 14)
   stepSide = -stepSide
-  const pan = stepSide * 0.12
-  burst({ t, noise: 'brown', type: 'lowpass', f: vary(380, 0.15), q: 0.8, a: 0.002, d: 0.06, gain: 0.07 + k * 0.05, pan })
-  burst({ t, noise: 'pink', f: vary(2400, 0.25), q: 1.2, a: 0.001, d: 0.025, gain: 0.025 + k * 0.02, pan })
+  footfall(now(), surface, 0.35 + Math.min(1, speed / 14) * 0.15, 0.85, stepSide * 0.12)
 }
 
-// Jump: a quick airy whoosh with a cute lift.
+// Jump: a quick airy whoosh (and sometimes a "hup!").
 export function jump() {
   if (!limit('jump', 120) || !voice(0.25)) return
   const t = now()
   burst({ t, noise: 'pink', f: 600, f2: 1800, q: 1, a: 0.015, d: 0.12, gain: 0.14 })
-  glider(t, [[0, 300], [0.1, 520]], { type: 'triangle', gain: 0.035, a: 0.005, d: 0.12, lp: 1800 })
+  playerHup()
 }
 
-// Landing, harder for a bigger fall (`impact` 0..1).
+// Landing, harder for a bigger fall (`impact` 0..1); a big one knocks an "oof" out of you.
 export function land(impact = 0.3) {
   if (!limit('land', 120) || !voice(0.3)) return
   const t = now()
@@ -495,6 +363,7 @@ export function land(impact = 0.3) {
   tone({ t, f: 130, f2: 50, d: 0.08 + k * 0.06, gain: 0.12 + k * 0.3 })
   burst({ t, noise: 'brown', type: 'lowpass', f: 600, d: 0.08 + k * 0.06, gain: 0.1 + k * 0.25 })
   burst({ t, noise: 'pink', f: 2500, q: 1, a: 0.001, d: 0.03, gain: 0.04 + k * 0.04 })
+  if (k > 0.6) playerOof()
 }
 
 // Respawn: a magical poof.

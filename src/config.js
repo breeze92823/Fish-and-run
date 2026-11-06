@@ -231,7 +231,7 @@ export const ZONES = [
     start: 0, // z where the zone begins (the finish line)
     end: -69, // z where the next zone begins (the far bank of its last river)
     banner: ['#d8ff4a', '#3ac800'], // gradient of the banner text
-    speed: 1, // recommended speed (SPEED): the guard sprints a little slower than a player at this speed
+    speed: 5, // recommended speed (SPEED; the HUD shows x SPEED.display = 50): a new player (1) must train first
     rivers: [-20, -64], // river centre lines: the fishing river and the one closing the zone
     guard: { kind: 'bear', home: { x: 14, z: -75 }, roam: { hx: 22, hz: 3 } }, // just over the closing river, guarding the way into Winter
     fish: [['neon_tetra', 30], ['guppy', 30], ['goldfish', 24], ['royal_gramma', 20], ['betta', 18], ['clownfish', 8], ['pufferfish', 7], ['black_moor', 6]],
@@ -383,9 +383,12 @@ export const FISHING = {
 // fishing banks) up to `gateDepth` m into the next zone. It blocks the way on until the
 // player is fast enough to outrun it, so every guard roams near its zone's end. Its chase
 // speed comes from the zone's recommended `speed` (SPEED.chaseFactor), not from the animal.
+// overtake: below a zone's recommended speed its guard runs at least this x your run speed and
+// chases you past the gate until it catches you (lane/index.js), so every zone needs training.
 export const GUARD = {
   gateDepth: 60,
   approach: 6,
+  overtake: 1.25,
   // build: type 'quadruped' (default) or 'bird'. Quadruped: body voxels [x, y, z], legH /
   // legW (m), head 'round' | 'snout', ears 'round' | 'pointed' | 'none', tail 'none' |
   // 'thin' | 'bushy' | 'thick' | 'club' | 'long' | 'rainbow', coat pattern, and extras
@@ -468,7 +471,8 @@ export const TRAILS = [
 // adds the same step: stat 1 -> 14 m/s sprint, 1K -> 28.7, 1M -> 43.4. Each zone has a
 // recommended `speed`; its guard sprints at chaseFactor x a player sprinting at it, so
 // below it the guard is the faster one.
-export const SPEED = { start: 10, perDecade: 0.35, chaseFactor: 0.95 }
+// `display`: the HUD, treadmill and zone banners show the stat x display (a new player's 1 reads 10).
+export const SPEED = { start: 1, display: 10, perDecade: 0.35, chaseFactor: 0.95 }
 
 // The treadmill in front of your plot. Step on the belt: you walk by yourself toward the
 // console (any key takes over) and the belt carries you back, so you stay on it; every
@@ -671,7 +675,7 @@ export const CAMERA = {
   maxPitch: 1.25,
   firstPersonPitch: 1.45, // |pitch| limit looking up/down in player mode
   eyeHeight: 0.92, // eye height as a fraction of player height (player mode)
-  distance: 17, // resting boom length, m (the reference frames the avatar small, mid-screen)
+  distance: 10,// resting boom length, m (the reference frames the avatar small, mid-screen)
   minDistance: 2.5, // wheel in past this enters player mode
   maxDistance: 34,
   followLerp: 14, // 1/s: the one smoothing stage, on the point the camera follows

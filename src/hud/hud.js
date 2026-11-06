@@ -18,7 +18,7 @@ import { onReservedAreas } from '../bloxity.js'
 export const UPDATE_AT = '2026-11-13T17:00:00Z'
 // "Next event in hh:mm:ss" repeats on this wall-clock period (stable across reloads). Defaults
 // until the server's `schedule` message arrives (setSchedule), which then rules both countdowns.
-export const EVENT_PERIOD_S = 3 * 60 * 60
+export const EVENT_PERIOD_S = 5 * 60 * 60
 
 let updateAtMs = Date.parse(UPDATE_AT)
 let eventPeriodS = EVENT_PERIOD_S
@@ -119,6 +119,7 @@ function pressable(e, fn) {
 
 // --- Layout: keep blocks off reserved areas, touch controls and each other --------
 const GAP = 6
+const SHRINK = [0.85, 0.72] // scales layout() tries when a block has no room at full size
 
 function hits(x, y, w, h, obs) {
   for (const o of obs) {
@@ -166,7 +167,7 @@ function place(r, spec, obs, B) {
       consider(B.r)
       if (best) return best
     }
-    return { x: r.x, y: r.y, s: 1 }
+    return { x: r.x, y: r.y, s: 1, none: true }
   }
 
   const left = spec.anchor === 'left'
@@ -191,7 +192,7 @@ function place(r, spec, obs, B) {
       }
     }
   }
-  return { x: r.x, y: r.y, s: 1 }
+  return { x: r.x, y: r.y, s: 1, none: true } // no free spot at this size
 }
 
 // --- The HUD ----------------------------------------------------------------------
@@ -260,7 +261,7 @@ export function createHud({ onAction = () => {} } = {}) {
   fishTile.append(icon('hud-ico', I.fish))
   pressable(fishTile, () => act('fish'))
 
-  // Bottom left: slow mode toggle, gems, speed stat, cash.
+  // Bottom left: slow mode toggle, trained speed (the shoe row, still classed hud-gems), speed multiplier, cash.
   const leftStack = el('div', 'hud-block hud-left')
   const toggle = el('div', 'hud-toggle')
   toggle.append(el('span', 'hud-knob'))
@@ -312,7 +313,7 @@ export function createHud({ onAction = () => {} } = {}) {
     return { text, dec, prefix, target: 0, shown: 0, key: -1, init: false }
   }
   const money = counter(cashNum, 1, '$')
-  const gems = counter(gemsNum, 1, '')
+  const trainedSpeed = counter(gemsNum, 1, '')
   function renderCounter(c) {
     const k = shortKey(c.shown, c.dec)
     if (k === c.key) return
@@ -481,7 +482,11 @@ export function createHud({ onAction = () => {} } = {}) {
     root.dataset.mode = mode
     root.style.setProperty('--u', `${u.toFixed(4)}px`)
 
-    // Write phase 1: back to the CSS positions.
+    // Write phase 1: back to the CSS positions. Transitions off while measuring and
+    // moving (some blocks animate `transform` for their press bounce), or the read
+    // below would catch them mid-way at their old spot and every re-layout (rotation,
+    // panel toggles) would drift them further.
+    root.classList.add('hud-measuring')
     for (const b of flow) b.el.style.transform = ''
 
     // Read phase (one forced layout).
@@ -520,7 +525,20 @@ export function createHud({ onAction = () => {} } = {}) {
     function placeBlock(b, r) {
       if (r.width === 0) return null
       const spec = mode === 'land' && b.el === tiles ? { ...b, yMajor: true } : b
-      const p = place({ x: r.left, y: r.top, w: r.width, h: r.height }, spec, obs, B)
+      let p = place({ x: r.left, y: r.top, w: r.width, h: r.height }, spec, obs, B)
+      // Small screens (a 320 px phone, Boxity's fixed-size chat and the thumb
+      // controls): no free spot at full size, so try the block a little smaller,
+      // keeping its anchored edges where they were, before giving up and overlapping.
+      for (const k of SHRINK) {
+        if (!p.none) break
+        const w = r.width * k
+        const h = r.height * k
+        const x = b.anchor === 'right' ? r.right - w : b.anchor === 'center' ? r.left + (r.width - w) / 2 : r.left
+        const y = b.dir === 'up' ? r.bottom - h : r.top
+        const q = place({ x, y, w, h }, spec, obs, B)
+        if (!q.none) p = { ...q, s: q.s * k }
+      }
+      if (p.none) p = { x: r.left, y: r.top, s: 1 }
       obs.push({ x: p.x, y: p.y, r: p.x + r.width * p.s, b: p.y + r.height * p.s })
       return { dx: p.x - r.left, dy: p.y - r.top, s: p.s }
     }
@@ -531,6 +549,8 @@ export function createHud({ onAction = () => {} } = {}) {
       if (!m || (Math.abs(m.dx) < 0.5 && Math.abs(m.dy) < 0.5 && m.s === 1)) return
       b.el.style.transform = `translate(${m.dx.toFixed(1)}px, ${m.dy.toFixed(1)}px)${m.s < 1 ? ` scale(${m.s.toFixed(3)})` : ''}`
     })
+    void root.offsetWidth // commit the new transforms before transitions come back
+    root.classList.remove('hud-measuring')
     const om = moves[flow.findIndex((b) => b.el === offer)]
     offerCache = offerVisible && om && box.width > 0 ? new DOMRect(box.left + om.dx, box.top + om.dy, box.width, box.height) : null
   }
@@ -575,19 +595,20 @@ export function createHud({ onAction = () => {} } = {}) {
   function setMoney(n) {
     setCounter(money, n)
   }
-  function setGems(n) {
-    setCounter(gems, n)
+  // Trained speed as shown (stat x SPEED.display); counts up with a pop on a gain.
+  function setTrainedSpeed(n) {
+    setCounter(trainedSpeed, n)
   }
-  // The speed stat, already formatted (speed.js formatSpeed); bump = a small pop on a gain.
-  function setSpeed(text, bump = false) {
+  // The speed multiplier (trail x boost), already formatted (speed.js formatMult); bump = a small pop on a gain.
+  function setSpeedMult(text, bump = false) {
     speedNum.set(text)
     if (bump) speedRow.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' })
   }
 
   return {
     setMoney,
-    setGems,
-    setSpeed,
+    setTrainedSpeed,
+    setSpeedMult,
     setOfflinePerDay,
     setOffer,
     setSpeedBoost,
@@ -606,7 +627,7 @@ export function createHud({ onAction = () => {} } = {}) {
     update(dt = 1 / 60) {
       tickClock()
       stepCounter(money, dt)
-      stepCounter(gems, dt)
+      stepCounter(trainedSpeed, dt)
     },
     layout: queueLayout,
     dispose() {

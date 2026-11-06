@@ -36,6 +36,10 @@
   position: absolute;
   transform-origin: 0 0;
 }
+/* hud.js layout(): measuring the blocks' CSS spots (no transform animation). */
+.hud-measuring .hud-block {
+  transition: none !important;
+}
 .hud [role='button'] {
   pointer-events: auto;
   cursor: pointer;

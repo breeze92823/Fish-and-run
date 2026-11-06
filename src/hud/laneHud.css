@@ -116,7 +116,7 @@
 
 /* Click Fast! */
 .lane-clicker {
-  bottom: calc(var(--lane-bottom, calc(165 * var(--u))) + 6 * var(--u));
+  bottom: calc(var(--lane-bottom-wide, var(--lane-bottom, calc(165 * var(--u)))) + 6 * var(--u));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -230,7 +230,9 @@
 
 /* Don't stop! */
 .lane-warn {
-  bottom: var(--lane-bottom, calc(166 * var(--u)));
+  bottom: var(--lane-bottom-wide, var(--lane-bottom, calc(166 * var(--u))));
+  max-width: calc(100vw - 16px);
+  text-align: center;
 }
 .lane-warn.on {
   animation: lane-blink 0.9s ease-in-out infinite;
@@ -298,10 +300,6 @@
 .hud[data-mode='land'] .lane-banner-sub {
   font-size: max(12px, calc(24 * var(--u)));
   --sw: 4px;
-}
-/* Portrait: the cash counter reaches under the backpack's left edge; sit above it. */
-.hud[data-mode='port'] .lane-act {
-  bottom: calc(var(--lane-bottom, 0px) + 36px);
 }
 .hud[data-mode='port'] .lane-act-title,
 .hud[data-mode='land'] .lane-act-title {

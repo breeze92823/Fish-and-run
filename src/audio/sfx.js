@@ -155,4 +155,6 @@ export function speedGain(level = 1) {
 }
 
 export * from './gameSfx.js'
+export * from './animals.js'
+export * from './playerSfx.js'
 export * from './uiSfx.js'

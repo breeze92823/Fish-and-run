@@ -341,7 +341,8 @@ function bird(kind) {
   return { root, body: g, head, legs, tail, wings, biped: true, flying: fly, hover: b.hover ?? 0 }
 }
 
-// chaseSpeed (m/s): the zone's (speed.js guardSpeed).
+// chaseSpeed (m/s): the zone's (speed.js guardSpeed); setChase(v, free) changes it per frame and
+// `free` lets it run north of its range (an under-speed player is chased until caught).
 export function createGuard(parent, fx, def, range, chaseSpeed) {
   const C = GUARD[def.kind]
   const m = C.build.type === 'bird' ? bird(def.kind) : quadruped(def.kind)
@@ -358,6 +359,7 @@ export function createGuard(parent, fx, def, range, chaseSpeed) {
   let speed = 0
   let splashTimer = 0
   const maxX = HUB.halfWidth - 2
+  let free = false
 
   const pickRoam = () => ({ x: home.x + (rand() * 2 - 1) * def.roam.hx, z: Math.max(range.minZ, Math.min(range.maxZ, home.z + (rand() * 2 - 1) * def.roam.hz)) })
   const set = (s) => {
@@ -374,7 +376,8 @@ export function createGuard(parent, fx, def, range, chaseSpeed) {
     facing += Math.sign(diff) * Math.min(Math.abs(diff), dt * 6)
     const step = Math.min(d, v * dt * Math.max(0.25, Math.cos(diff)))
     pos.x = Math.max(-maxX, Math.min(maxX, pos.x + Math.sin(facing) * step))
-    pos.z = Math.max(range.minZ, Math.min(range.maxZ, pos.z + Math.cos(facing) * step))
+    // North limit: the range, or the lane's end while chasing free; never pulled back south of it.
+    pos.z = Math.max(free ? HUB.laneEnd : Math.min(range.minZ, pos.z), Math.min(range.maxZ, pos.z + Math.cos(facing) * step))
     speed = step / Math.max(dt, 1e-4)
     return d
   }
@@ -389,6 +392,10 @@ export function createGuard(parent, fx, def, range, chaseSpeed) {
       return state === 'roar' || state === 'chase'
     },
     position: pos,
+    setChase(v, unbounded) {
+      chaseSpeed = v
+      free = unbounded
+    },
     chase() {
       if (state === 'roam' || state === 'return') set('roar')
     },

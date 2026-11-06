@@ -337,10 +337,44 @@
   }
 }
 
-/* Landscape phones: centre the panel in the space above the thumb buttons. */
+/* Landscape phones: centre the panel in the space above the thumb buttons, and with
+   touch controls on screen keep it left of the CAM / JUMP cluster (touch.css sizes). */
 @media (max-height: 480px) {
   .fp-wrap {
     top: 50%;
+  }
+}
+@media (orientation: landscape) and (max-height: 480px) {
+  .touch-ui .fp-wrap {
+    top: 47%;
+    right: calc(var(--safe-r) + clamp(12px, 3vmin, 24px) + clamp(72px, 20vmin, 100px) + clamp(52px, 14vmin, 70px) + 20px);
+  }
+}
+
+/* Portrait phones: a centred card sized to the screen width (it slides up from the
+   bottom), with the close tab on its top-right corner pointing down. */
+@media (orientation: portrait) and (max-width: 760px) {
+  .fp-root {
+    --u: min(calc((100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 28px) / 400), 1.3px);
+  }
+  .fp-wrap {
+    right: auto;
+    left: 50%;
+    top: 45%;
+    width: calc(var(--u) * 400);
+    transform: translate(-50%, calc(-50% + 60vh));
+  }
+  .fp-root.open .fp-wrap {
+    transform: translate(-50%, -50%);
+  }
+  .fp-list {
+    height: min(calc(var(--u) * 280), 30dvh);
+  }
+  .fp-close {
+    left: auto;
+    right: 0;
+    top: calc(var(--u) * -66);
+    rotate: 90deg;
   }
 }
 @media (prefers-reduced-motion: reduce) {
