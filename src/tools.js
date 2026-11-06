@@ -80,3 +80,25 @@ export function setToolVisible(avatar, on) {
   const t = avatar?.userData.tool
   if (t) t.visible = on
 }
+
+// The bat swing (bat.js), as upper-body overlays on the animator (character-space bone rotations):
+// a wind-up to the right, a fast sweep across the front, a follow-through, then back to locomotion.
+// stepSwing(animator, prev, t) applies the key the swing just reached (prev -> t, s since it began)
+// and returns false once the swing is over. `windup` / `total` from config BAT.
+export const BAT_POSE = {
+  windup: { ArmR1: { x: -1.75, z: -1.25 }, ArmR2: { x: 1.1 }, ArmL1: { x: -1.1, z: -0.35 }, ArmL2: { x: 0.6 }, Spine1: { y: -0.65, x: -0.08 }, Neck1: { y: 0.4 } },
+  strike: { ArmR1: { x: -1.55, z: 0.55 }, ArmR2: { x: 0.05 }, ArmL1: { x: -1.45, z: 0.75 }, ArmL2: { x: 0.2 }, Spine1: { y: 0.75, x: 0.18 }, Neck1: { y: -0.35 } },
+  follow: { ArmR1: { x: -1.1, z: 1.0 }, ArmR2: { x: 0.5 }, ArmL1: { x: -0.9, z: 1.0 }, Spine1: { y: 0.95, x: 0.12 }, Neck1: { y: -0.4 } },
+}
+export function stepSwing(animator, prev, t, windup, total) {
+  if (!animator) return t < total
+  const keys = [
+    [0, BAT_POSE.windup, 32],
+    [windup, BAT_POSE.strike, 48],
+    [windup + 0.1, BAT_POSE.follow, 22],
+    [total, null, 9],
+  ]
+  for (const [at, pose, rate] of keys) if (prev < at && t >= at) animator.setOverlay(pose, rate)
+  if (prev < 0 && t >= 0) animator.setOverlay(BAT_POSE.windup, 32)
+  return t < total
+}

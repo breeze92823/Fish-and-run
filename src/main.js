@@ -36,6 +36,7 @@ import { buildHub } from './hub/index.js'
 import { fishTime, formatEarn } from './hub/fish.js'
 import { initNet, net, onLeaderboard, onNetMessage, roster, sendLoadout, sendPlot, sendPose, setStores, setWantedBase, syncAvatar, waitForBase } from './net.js'
 import { createRemotePlayers } from './remotePlayers.js'
+import { createBat } from './bat.js'
 import { hydrateFish, snapshotFish } from './activeFish.js'
 import { hydrateIndex, snapshotIndex } from './fishIndex.js'
 import { hydrateRods, snapshotRods } from './rods/state.js'
@@ -198,7 +199,7 @@ function equip(slot) {
 }
 
 // --- The run lane: zones, fishing, the guard, carrying fish home --------------------
-const laneHud = createLaneHud(hud.root, { onCast: () => lane.tryCast(), onStop: () => lane.reset(), onClick: () => lane.click() })
+const laneHud = createLaneHud(hud.root, { onCast: () => lane.tryCast(), onStop: () => lane.reset(), onClick: () => lane.click(), onSwing: () => bat.swing() })
 const skyMoods = new Map()
 const lane = buildLane(scene, {
   fx,
@@ -286,6 +287,8 @@ setStores([
 
 // --- Multiplayer: the other players, their plots and the leaderboard ----------------------------
 const remotes = createRemotePlayers(scene)
+// The bat (hotbar 2): bonk other players out in the lane and steal the catch they carry (bat.js).
+const bat = createBat({ scene, fx, hud, laneHud, lane, remotes, playerGroup, canvas: renderer.domElement, getAnimator: () => animator, getSlot: () => equippedSlot })
 // This player as the others draw them: the pose (each frame, net.js throttles), and what is in hand.
 function sendPresence() {
   const v = player.velocity
@@ -437,7 +440,8 @@ let readySince = 0
 let elapsed = 0
 // One frame. `fixedDt` (dev only, __game.advance) steps the game without real time passing.
 function frame(fixedDt) {
-  const dt = fixedDt ?? Math.min(clock.getDelta(), 0.1) // clamp huge frames (tab switch, breakpoint)
+  const raw = fixedDt ?? Math.min(clock.getDelta(), 0.1) // clamp huge frames (tab switch, breakpoint)
+  const dt = raw * bat.timeScale(raw) // a bat hit freezes the world for a beat
   elapsed += dt
   tickBoost()
 
@@ -463,6 +467,7 @@ function frame(fixedDt) {
   myBase.update(player.position)
   lane.update(dt, elapsed)
   remotes.update(dt, player.renderPosition)
+  bat.update(dt)
   sendPresence()
   if (myTrail?.mesh.visible) myTrail.update(dt, p.x, p.y, p.z)
   laneHud.update(dt)
@@ -494,5 +499,5 @@ if (import.meta.env.DEV) {
     resetPlayer({ x, y, z }, facing)
     syncYawToPlayer()
   }
-  window.__game = { player, treadmill, base: myBase, net, remotes, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, hub, equip, lane, advance: (seconds, step = 1 / 60) => { for (let t = 0; t < seconds; t += step) frame(step) }, pause: (on) => { paused = on; if (!on) clock.getDelta() }, openSellFish, openIndex, openRods, openTrails }
+  window.__game = { player, bat, treadmill, base: myBase, net, remotes, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, hub, equip, lane, advance: (seconds, step = 1 / 60) => { for (let t = 0; t < seconds; t += step) frame(step) }, pause: (on) => { paused = on; if (!on) clock.getDelta() }, openSellFish, openIndex, openRods, openTrails }
 }

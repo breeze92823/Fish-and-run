@@ -1,38 +1,15 @@
 // Sounds of the Active Fish panel (src/hud/fishPanel.js), synthesised like sfx.js.
 // Silent until the first gesture starts audio; never throws.
 import { COARSE_POINTER } from '../config.js'
-import { A, isMuted, now, voice } from './core.js'
+import { A, now, voice } from './core.js'
+import { BELL, buzz, COIN, glock as glockAt, limit, PENTA, playedWithin, PLASTIC, semi, C6, GLOCK, WOOD } from './kit.js'
 import { bubble, bubbles, burst, crinkle, modal, rnd, tone, vary } from './synth.js'
 
-const COIN = [[1, 1, 0.5], [1.504, 0.6, 0.36], [2.24, 0.45, 0.26], [2.71, 0.3, 0.18], [3.47, 0.22, 0.12], [4.03, 0.12, 0.08]]
-const GLOCK = [[1, 1, 1.4], [2.756, 0.32, 0.45], [5.404, 0.1, 0.18], [8.933, 0.04, 0.08]]
-const BELL = [[0.5, 0.3, 1.5], [1, 1, 1.3], [1.19, 0.45, 1], [1.5, 0.3, 0.85], [2, 0.42, 0.75], [2.5, 0.18, 0.5], [2.66, 0.22, 0.45], [3.01, 0.1, 0.35], [4.1, 0.06, 0.25]]
-const WOOD = [[1, 1, 0.07], [2.57, 0.45, 0.035], [4.2, 0.22, 0.016], [6.1, 0.08, 0.01]]
-const PLASTIC = [[1, 1, 0.026], [2.31, 0.5, 0.016], [3.93, 0.28, 0.01]]
-const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26]
-const semi = (n) => Math.pow(2, n / 12)
-const C6 = 1046.5
-
-const lastAt = new Map()
-function limit(name, ms) {
-  const t = performance.now()
-  if (t - (lastAt.get(name) ?? -1e9) < ms) return false
-  lastAt.set(name, t)
-  return true
-}
-function buzz(pattern) {
-  if (!COARSE_POINTER || isMuted()) return
-  try {
-    navigator.vibrate?.(pattern)
-  } catch {
-    // Not allowed in this frame.
-  }
-}
-function glock(t, notes, gap, gain, verb = 0.25, bus = A.sfx) {
-  notes.forEach((n, i) => modal({ t: t + i * gap, f: C6 * semi(n), modes: GLOCK, gain: gain * rnd(0.85, 1), strike: 0.12, pan: (i / Math.max(1, notes.length - 1) - 0.5) * 0.5, verb, bus }))
-}
-// Chunky button press under every action: plastic click + rubbery thump.
+const glock = (t, notes, gap, gain, verb = 0.25, bus = A.sfx) => glockAt(t, notes, gap, gain, verb, bus)
+// Chunky button press under every action: plastic click + rubbery thump. Skipped when the
+// global button press (uiSfx.js, on pointerdown) just made it, so the click never doubles.
 function press(t, bus) {
+  if (playedWithin('press', 450)) return
   burst({ t, f: vary(3000, 0.1), q: 1, d: 0.008, gain: 0.18, bus })
   modal({ t, f: vary(820, 0.05), modes: PLASTIC, gain: 0.16, bus })
   tone({ t, f: vary(140, 0.05), f2: 68, d: 0.06, gain: 0.26, bus })

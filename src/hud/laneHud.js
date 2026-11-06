@@ -5,14 +5,18 @@ import { el, ot, pressable } from './hud.js'
 //  - zone banner ("FOREST") on a dark band, top centre, shown briefly on entering a zone,
 //    with the zone's recommended speed under it (red while yours is lower)
 //  - Cast button above the backpack (rod held, standing by a river)
+//  - Swing button in the same spot (bat held out in the lane: bat.js)
 //  - an action button in the same spot (setAction: the plot treadmill's Upgrade)
 //  - Click Fast! bar: clicks so far, a fill growing out from the fish box, a Stop button
 //  - RUN! (big red, top) when a fish is landed, and a red "Don't stop!" warning while chased
-// createLaneHud(hudRoot, { onCast, onStop, onClick }) -> controls below.
+// createLaneHud(hudRoot, { onCast, onStop, onClick, onSwing }) -> controls below.
 const FISH_SVG =
   '<svg viewBox="0 0 64 40" aria-hidden="true"><path d="M6 20c8-12 26-14 38-6l12-8v28l-12-8C32 34 14 32 6 20z" fill="#8a8f98" stroke="#3a3e46" stroke-width="3" stroke-linejoin="round"/><circle cx="16" cy="18" r="2.5" fill="#222"/></svg>'
 
-export function createLaneHud(hudRoot, { onCast, onStop, onClick }) {
+const BAT_SVG =
+  '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M9 41l-3-3 3-4 4 3z" fill="#5a3a22" stroke="#1a0e06" stroke-width="2.5" stroke-linejoin="round"/><path d="M11 36l22-26c3-3 7-3 9 0s1 6-2 8L13 39z" fill="#f2c27a" stroke="#1a0e06" stroke-width="2.5" stroke-linejoin="round"/><path d="M33 12c2-1 4-1 5 1" fill="none" stroke="#fff6dc" stroke-width="2" stroke-linecap="round"/></svg>'
+
+export function createLaneHud(hudRoot, { onCast, onStop, onClick, onSwing }) {
   const root = el('div', 'lane')
 
   // Zone banner
@@ -25,6 +29,20 @@ export function createLaneHud(hudRoot, { onCast, onStop, onClick }) {
   const cast = el('div', 'lane-cast')
   cast.append(ot('lane-cast-text', 'Cast').el)
   pressable(cast, () => onCast?.())
+
+  // Swing button: fires on press (not release), so a swing lands the moment you tap.
+  const swing = el('div', 'lane-swing')
+  swing.setAttribute('role', 'button')
+  swing.append(el('span', 'lane-swing-ico', BAT_SVG), ot('lane-swing-text', 'Swing').el)
+  swing.addEventListener('pointerdown', (e) => {
+    if (e.button > 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    swing.classList.remove('hit')
+    void swing.offsetWidth
+    swing.classList.add('hit')
+    onSwing?.()
+  })
 
   // Action button (the plot treadmill's Upgrade): a title and a price, shown while near it.
   const act = el('div', 'lane-act')
@@ -65,7 +83,7 @@ export function createLaneHud(hudRoot, { onCast, onStop, onClick }) {
   const warn = el('div', 'lane-warn')
   warn.append(ot('lane-warn-text', "Don't stop! Keep running to escape the guard!").el)
 
-  root.append(catcher, banner, cast, act, clicker, run, warn)
+  root.append(catcher, banner, cast, swing, act, clicker, run, warn)
   hudRoot.appendChild(root)
 
   let bannerTimer = 0
@@ -102,6 +120,11 @@ export function createLaneHud(hudRoot, { onCast, onStop, onClick }) {
     },
     showCast(on) {
       show(cast, on)
+    },
+    // The bat's Swing button; `cool` 0..1 = how much of the cooldown is left (dims it).
+    showSwing(on, cool = 0) {
+      show(swing, on)
+      swing.style.setProperty('--cool', String(cool))
     },
     // a = { title, price, ok (affordable), fn } or null to hide.
     setAction(a) {

@@ -10,13 +10,13 @@
 // Poses are eased toward the last one relayed plus speed x heading for the time since (dead
 // reckoning), so fast runners glide instead of stepping. Nearest first, capped (fewer on touch).
 import { Group } from 'three'
-import { COARSE_POINTER, FISH, NET, PLAYER_DIMS, TRAILS } from './config.js'
+import { BAT, COARSE_POINTER, FISH, NET, PLAYER_DIMS, TRAILS } from './config.js'
 import { roster, net } from './net.js'
 import { label } from './propkit.js'
 import { buildDefaultCharacter } from './avatar/character.js'
 import { buildLook } from './avatar/look.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
-import { equipTool } from './tools.js'
+import { equipTool, stepSwing } from './tools.js'
 import { fishMesh } from './hub/fish.js'
 import { createTrail } from './hub/trail.js'
 import { POSE } from './lane/index.js'
@@ -43,6 +43,9 @@ class Remote {
     this.label = null
     this.placed = false
     this.fall = 0
+    this.swingT = -1 // s into a bat swing, -1 = none
+    this.spin = 0 // somersault while flying from a bonk
+    this.p = null // their roster entry, as last drawn
     this.base = { x: 0, y: 0, z: 0, yaw: 0, speed: 0, at: 0, key: '' }
     this.setAvatar(buildDefaultCharacter())
   }
@@ -83,6 +86,13 @@ class Remote {
     } catch (err) {
       console.warn('[remote] avatar failed to load', err)
     }
+  }
+
+  // A bat swing seen from the roster's `swing` relay (bat.js).
+  swing() {
+    if (this.applied.hold) return
+    this.swingT = 0
+    stepSwing(this.animator, -1, 0, BAT.windup, BAT.swing)
   }
 
   setCarried(species) {
@@ -149,7 +159,15 @@ class Remote {
     g.position.y += (b.y + this.fall * 0.22 - g.position.y) * k
     g.position.z += (tz - g.position.z) * k
     g.rotation.y += angleDelta(g.rotation.y, b.yaw) * k
-    g.rotation.x = -this.fall * Math.PI * 0.5
+    // Bonked into the air: somersault until they come down (the flight itself comes through the pose).
+    const flying = p.knocked && b.y > 0.5
+    this.spin = flying ? this.spin + dt * 13 : 0
+    g.rotation.x = flying ? -this.spin : -this.fall * Math.PI * 0.5
+    if (this.swingT >= 0) {
+      const prev = this.swingT
+      this.swingT += dt
+      if (!stepSwing(this.animator, prev, this.swingT, BAT.windup, BAT.swing)) this.swingT = -1
+    }
     this.placed = true
     if (this.carried) {
       const t = now / 1000
@@ -207,6 +225,12 @@ export function createRemotePlayers(scene) {
     get count() {
       return remotes.size
     },
+    // The drawn remote for a session id (its `group` is where they stand on screen), or null.
+    get: (id) => remotes.get(id) ?? null,
+    // fn(id, remote) for every remote drawn this frame (remote.p = their roster entry).
+    forEachVisible(fn) {
+      for (const [id, r] of remotes) if (r.group.visible && r.p) fn(id, r)
+    },
     // viewer: this player's drawn position.
     update(dt, viewer) {
       const players = roster()
@@ -230,6 +254,7 @@ export function createRemotePlayers(scene) {
           continue
         }
         r.sync(p)
+        r.p = p
         r.group.visible = true
         r.update(p, dt, now)
       }
