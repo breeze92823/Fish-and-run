@@ -69,7 +69,7 @@ export function buildLane(scene, ctx) {
     const built = zone.id === 'forest' ? buildForest(group, zone) : buildThemedZone(group, zone)
     const range = { minZ: zone.end - GUARD.gateDepth, maxZ: zone.start - 1.5 }
     const chaseSpeed = guardSpeed(zone)
-    const guard = createGuard(group, fx, zone.guard, range, chaseSpeed)
+    const guard = createGuard(root, fx, zone.guard, range, chaseSpeed)
     // The gate: from `approach` m before the zone's end (but north of every bank the rod
     // can be cast from, so fishing never sets it off) to `gateDepth` m into the next zone.
     const gate = {
@@ -78,6 +78,7 @@ export function buildLane(scene, ctx) {
     }
     return { zone, index, group, built, rivers: built.rivers, guard, chaseSpeed, range, gate, groundAt: built.groundAt ?? (() => 0), centre: (zone.start + zone.end) / 2, name: zone.guard.kind.charAt(0).toUpperCase() + zone.guard.kind.slice(1) }
   })
+  const allRiverList = zones.flatMap((zn) => zn.rivers)
   const allRivers = zones.flatMap((zn) => zn.rivers.map((river) => ({ zn, river })))
   // Build every zone's fish models in idle time, nearest zones first.
   prewarmFish(ZONES.flatMap((zone) => zone.fish.map(([id]) => id)))
@@ -593,14 +594,18 @@ export function buildLane(scene, ctx) {
       const myRun = runSpeed(stat, true)
       for (const zn of zones) {
         const under = stat < (zn.zone.speed ?? 1)
-        zn.guard.setChase(under ? Math.max(zn.chaseSpeed, myRun * GUARD.overtake) : zn.chaseSpeed, under && mode !== 'carry')
+        const pursuit = mode === 'carry' && zn === current
+        zn.guard.setChase(under ? Math.max(zn.chaseSpeed, myRun * GUARD.overtake) : zn.chaseSpeed, under && mode !== 'carry', pursuit)
         let want = false
-        if (mode === 'carry') want = zn === current && p.z <= zn.zone.start + 1 && p.z >= zn.range.minZ
+        if (mode === 'carry') want = pursuit && p.z <= 0 && p.z >= zn.range.minZ // follows through the other zones until the hub
         else if (mode !== 'thrown') want = p.z < zn.gate.from && (p.z > zn.gate.to || (under && zn.guard.chasing))
         if (want) zn.guard.chase()
         else zn.guard.giveUp()
-        if (!zn.group.visible && !zn.guard.chasing) continue
-        const res = zn.guard.update(dt, elapsed, player.renderPosition, zn.rivers, zn.groundAt)
+        // The guard lives in the lane root (it can leave its zone), so it is drawn by its own distance.
+        zn.guard.group.visible = Math.abs(p.z - zn.guard.position.z) < VISIBLE
+        if (!zn.group.visible && zn.guard.state === 'roam') continue
+        const gz = zones.find((o) => o.zone === zoneAt(zn.guard.position.z)) ?? zn
+        const res = zn.guard.update(dt, elapsed, player.renderPosition, allRiverList, gz.groundAt)
         if (res === 'caught' && want) knockedDown(zn)
         guardSounds(zn, dt)
         if (zn.guard.chasing) {
