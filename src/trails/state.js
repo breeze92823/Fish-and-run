@@ -8,7 +8,8 @@ import { spend } from '../inventory.js'
 export const trailById = new Map(TRAILS.map((t) => [t.id, t]))
 const START = TRAILS.find((t) => t.start) ?? null
 
-const owned = new Set(TRAILS.filter((t) => t.price <= 0).map((t) => t.id))
+// Only a `start` trail is owned at boot (none by default): free trails are claimed at the stall.
+const owned = new Set()
 if (START) owned.add(START.id)
 let equipped = START?.id ?? null
 

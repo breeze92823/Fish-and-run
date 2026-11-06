@@ -430,7 +430,7 @@ export const BAT = {
 }
 
 // Economy (local until saves exist). Offline earnings are `offlineRate` of the online rate.
-export const ECONOMY = { startMoney: 222500, startGems: 845, offlineRate: 0.025, slowModeSpeed: 0.5 }
+export const ECONOMY = { startMoney: 0, startGems: 0, offlineRate: 0.025, slowModeSpeed: 0.5 }
 // The rotating "best fish" offer in the top-right of the HUD: [species, % of best, price].
 // `price` is in cash (money); the fish arrives in your hands with earn = species earn x earnMult.
 export const OFFERS = [
@@ -447,9 +447,9 @@ export const TRAIL = { points: 44, spacing: 0.35, life: 1.0, height: 0.35, width
 // Bought with cash at the TRAILS stall. The equipped trail streams behind the player and
 // multiplies the speed stat by `speed` (no trail = x1; see SPEED). `ball` = the card's swatch (CSS
 // gradient stops, drawn diagonally), `colors` = the 3D ribbon from runner to tail.
-// The `start` trail is owned and equipped at boot.
+// A new player owns no trail (x1 speed); a trail with `start: true` would be owned and equipped at boot.
 export const TRAILS = [
-  { id: 'grey', name: 'Grey Trail', rarity: 'Common', speed: 1.25, price: 0, start: true, ball: ['#e6e9ee', '#b4bac3', '#7c8591'], colors: ['#f2f4f8', '#9aa2ae'] },
+  { id: 'grey', name: 'Grey Trail', rarity: 'Common', speed: 1.25, price: 0, ball: ['#e6e9ee', '#b4bac3', '#7c8591'], colors: ['#f2f4f8', '#9aa2ae'] },
   { id: 'green', name: 'Green Trail', rarity: 'Uncommon', speed: 1.5, price: 15e3, ball: ['#4ff090', '#22c46a', '#119a4c'], colors: ['#5dff9a', '#13b85a'] },
   { id: 'yellow', name: 'Yellow Trail', rarity: 'Uncommon', speed: 1.75, price: 100e3, ball: ['#ffe04a', '#ffbe2a', '#ff9a14'], colors: ['#fff23a', '#ffa21a'] },
   { id: 'blue', name: 'Blue Trail', rarity: 'Rare', speed: 2, price: 500e3, ball: ['#5ec4ff', '#2a8cf2', '#1658d8'], colors: ['#6acfff', '#1a5cff'] },
@@ -468,7 +468,7 @@ export const TRAILS = [
 // adds the same step: stat 1 -> 14 m/s sprint, 1K -> 28.7, 1M -> 43.4. Each zone has a
 // recommended `speed`; its guard sprints at chaseFactor x a player sprinting at it, so
 // below it the guard is the faster one.
-export const SPEED = { start: 1, perDecade: 0.35, chaseFactor: 0.95 }
+export const SPEED = { start: 10, perDecade: 0.35, chaseFactor: 0.95 }
 
 // The treadmill in front of your plot. Step on the belt: you walk by yourself toward the
 // console (any key takes over) and the belt carries you back, so you stay on it; every
@@ -541,16 +541,7 @@ export const BASE = {
 // Up to the base's `slots` (BASE.levels) backpack fish swim in your pond ("active") and earn
 // every second. START_FISH joins the backpack of a new player ({ species, weight kg, earn $/s,
 // mutation, equipped }); mutation 'gold' shows the gold badge on the card.
-export const START_FISH = [
-  { species: 'black_moor', weight: 0.6, earn: 88, mutation: 'gold', equipped: true },
-  { species: 'guppy', weight: 0.4, earn: 8, equipped: true },
-  { species: 'neon_tetra', weight: 0.3, earn: 5, equipped: true },
-  { species: 'royal_gramma', weight: 0.5, earn: 9 },
-  { species: 'angelfish', weight: 0.9, earn: 26 },
-  { species: 'lobster', weight: 1.8, earn: 64 },
-  { species: 'seahorse', weight: 0.7, earn: 31 },
-  { species: 'neon_tetra', weight: 0.2, earn: 4 },
-]
+export const START_FISH = [] // a new player starts with an empty backpack
 
 // --- Player modes (modes.js) -------------------------------------------------
 // 'character' = third-person chase cam with the avatar on screen.
@@ -818,10 +809,10 @@ export const AUDIO = {
 
 // --- Backpack + Sell Fish window (inventory.js, sellFish.js) -------------------------------
 // A caught fish is { species (FISH id), weight kg, earn $/s }; it sells for earn * valuePerEarn.
-// starterBackpack fills the backpack until catching and saves exist.
+// starterBackpack is what a new player carries (nothing: only the rod and the bat).
 export const SELL = {
   valuePerEarn: 100,
-  starterBackpack: [{ species: 'guppy', weight: 0.5, earn: 14 }],
+  starterBackpack: [],
 }
 
 // --- Index window (fishIndex.js, hud/indexWindow.js) -----------------------------------------
